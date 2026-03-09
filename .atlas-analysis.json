@@ -1,0 +1,117 @@
+{
+  "projectType": "saas",
+  "projectName": "ClassQuiz",
+  "projectDescription": "An open-source, interactive quiz platform for educational purposes, similar to Kahoot",
+  "theme": "almond",
+  "primaryColor": "#d4e7cb",
+  "lightColor": "#6e735b",
+  "darkColor": "#b7cdb1",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "self-hosting"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/quiz-creation",
+              "features/live-games",
+              "features/question-types",
+              "features/results-analytics",
+              "features/community"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment-variables",
+              "configuration/storage",
+              "configuration/email",
+              "configuration/oauth",
+              "configuration/external-services"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/import-from-kahoot",
+              "guides/creating-quizzes",
+              "guides/managing-users",
+              "guides/moderation"
+            ]
+          },
+          {
+            "group": "Developer",
+            "pages": [
+              "developer/architecture",
+              "developer/socket-events",
+              "developer/database-models",
+              "developer/contributing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/quiz",
+              "api/live-games",
+              "api/users",
+              "api/storage",
+              "api/search",
+              "api/community"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Real-time multiplayer quiz games with Socket.IO",
+    "Multiple question types (ABCD, voting, range, text)",
+    "Live game management and player tracking",
+    "Public quiz marketplace and community features",
+    "Import quizzes from Kahoot",
+    "Results and analytics dashboard",
+    "OAuth authentication (Google, GitHub, custom OpenID)",
+    "WebAuthn and TOTP two-factor authentication",
+    "S3 and local storage backends",
+    "Meilisearch-powered quiz discovery",
+    "i18n support via Weblate",
+    "Box controller integration for physical buzzers"
+  ],
+  "publicApiSurface": [
+    "POST /api/v1/quiz/start/{quiz_id} - Start a quiz game",
+    "GET /api/v1/quiz/get/{quiz_id} - Get quiz details",
+    "GET /api/v1/live/ - Get live game data",
+    "POST /api/v1/users/register - Register new user",
+    "POST /api/v1/login/oauth/{provider} - OAuth authentication",
+    "GET /api/v1/storage/download/{file_id} - Download uploaded file",
+    "GET /api/v1/search/{query} - Search public quizzes",
+    "WebSocket: register_as_admin - Register as game admin",
+    "WebSocket: join_game - Join game as player",
+    "WebSocket: set_question_number - Control game flow",
+    "WebSocket: submit_answer - Submit player answer",
+    "GET /api/v1/results/{game_id} - Get game results",
+    "POST /api/v1/editor/create - Create new quiz",
+    "GET /api/v1/community/quizzes - Browse public quizzes"
+  ]
+}
