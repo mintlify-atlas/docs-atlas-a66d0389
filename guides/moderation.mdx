@@ -1,0 +1,416 @@
+---
+title: Content Moderation
+description: Reviewing and rating public quizzes to maintain content quality
+---
+
+ClassQuiz includes a moderation system for reviewing public quizzes and maintaining content quality. Moderators can rate quizzes to control their visibility in search results and public listings.
+
+## Moderation Overview
+
+The moderation system is implemented in `classquiz/routers/moderation.py` and provides:
+
+- Review queue for unrated public quizzes
+- Rating system for content quality
+- Moderator authentication and permissions
+- Pagination for large review queues
+
+## Becoming a Moderator
+
+Moderators are users with special permissions. The authentication check is handled by `get_current_moderator` from `classquiz.auth`.
+
+<Note>
+Moderator permissions are typically granted by system administrators. Contact your instance admin to request moderator access.
+</Note>
+
+## Moderator Dashboard
+
+### Check Moderator Status
+
+**Endpoint**: `GET /api/v1/moderation/status`
+
+**Authentication**: Moderator required
+
+```bash
+curl -X GET \
+  'https://your-instance.com/api/v1/moderation/status' \
+  -H 'Authorization: Bearer MODERATOR_TOKEN'
+```
+
+**Response**:
+```json
+{
+  "status": "ok"
+}
+```
+
+The endpoint also sets a `moderator=yes` cookie for web interface access.
+
+## Review Queue
+
+### Get Quizzes to Review
+
+**Endpoint**: `GET /api/v1/moderation/quizzes`
+
+**Authentication**: Moderator required
+
+**Parameters**:
+- `page` (int): Page number (starts at 1)
+- `all` (bool): If true, show all public quizzes; if false, only unrated quizzes
+
+**Example - Get unrated quizzes**:
+```bash
+curl -X GET \
+  'https://your-instance.com/api/v1/moderation/quizzes?page=1&all=false' \
+  -H 'Authorization: Bearer MODERATOR_TOKEN'
+```
+
+**Example - Get all public quizzes**:
+```bash
+curl -X GET \
+  'https://your-instance.com/api/v1/moderation/quizzes?page=1&all=true' \
+  -H 'Authorization: Bearer MODERATOR_TOKEN'
+```
+
+**Response**:
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "title": "World Geography Quiz",
+    "description": "Test your knowledge of world capitals",
+    "public": true,
+    "mod_rating": null,
+    "created_at": "2023-10-15T10:30:00Z",
+    "updated_at": "2023-10-15T12:00:00Z",
+    "questions": [...],
+    "imported_from_kahoot": false
+  }
+]
+```
+
+### Pagination
+
+<Tip>
+The review queue uses standard pagination with a default page size. Page numbers start at 1.
+</Tip>
+
+Implementation from `classquiz/routers/moderation.py:24-46`:
+
+```python
+if page < 1:
+    raise HTTPException(status_code=400, detail="page 1 is the first")
+
+if all:
+    quizzes = await Quiz.objects.paginate(page=page) \
+        .order_by(Quiz.updated_at.desc()) \
+        .filter(Quiz.public == True).all()
+else:
+    quizzes = await Quiz.objects.paginate(page=page) \
+        .order_by(Quiz.updated_at.desc()) \
+        .filter(Quiz.public == True) \
+        .filter(Quiz.mod_rating == None).all()
+```
+
+Quizzes are ordered by `updated_at` in descending order, showing recently updated quizzes first.
+
+## Rating Quizzes
+
+### Set Moderation Rating
+
+**Endpoint**: `POST /api/v1/moderation/rating/set/{quiz_id}`
+
+**Authentication**: Moderator required
+
+**Path Parameters**:
+- `quiz_id` (UUID): The quiz to rate
+
+**Request Body**:
+```json
+{
+  "rating": 5
+}
+```
+
+**Remove Rating**:
+```json
+{
+  "rating": null
+}
+```
+
+**Example**:
+```bash
+curl -X POST \
+  'https://your-instance.com/api/v1/moderation/rating/set/550e8400-e29b-41d4-a716-446655440000' \
+  -H 'Authorization: Bearer MODERATOR_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"rating": 4}'
+```
+
+**Response**: Returns the updated Quiz object
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "World Geography Quiz",
+  "mod_rating": 4,
+  ...
+}
+```
+
+## Rating System
+
+The `mod_rating` field is a SmallInteger (see `classquiz/db/models.py:201`):
+
+```python
+class Quiz(ormar.Model):
+    mod_rating: int | None = ormar.SmallInteger(nullable=True)
+```
+
+### Rating Scale
+
+While the system supports any integer value, consider this recommended scale:
+
+<Tabs>
+  <Tab title="5 - Excellent">
+    - High-quality content
+    - Educational value
+    - No issues with accuracy or appropriateness
+    - Well-formatted questions
+    - Good images and design
+  </Tab>
+  
+  <Tab title="4 - Good">
+    - Solid content
+    - Minor formatting issues
+    - Generally accurate and appropriate
+  </Tab>
+  
+  <Tab title="3 - Acceptable">
+    - Average quality
+    - Some issues but not critical
+    - Could be improved
+  </Tab>
+  
+  <Tab title="2 - Poor">
+    - Quality issues
+    - Significant formatting problems
+    - Some inappropriate content
+    - Consider hiding from search
+  </Tab>
+  
+  <Tab title="1 - Unacceptable">
+    - Inappropriate content
+    - Spam or low-effort quiz
+    - Inaccurate information
+    - Should be hidden from public view
+  </Tab>
+</Tabs>
+
+<Note>
+Your ClassQuiz instance may use a different rating scale. Consult your moderation guidelines.
+</Note>
+
+## Moderation Workflow
+
+<Steps>
+  <Step title="Access the review queue">
+    Call `GET /api/v1/moderation/quizzes?page=1&all=false` to get unrated public quizzes.
+  </Step>
+
+  <Step title="Review quiz content">
+    For each quiz, review:
+    - Question quality and accuracy
+    - Appropriateness of content
+    - Image quality and relevance
+    - Overall educational value
+    - Signs of spam or abuse
+  </Step>
+
+  <Step title="Assign rating">
+    Use `POST /api/v1/moderation/rating/set/{quiz_id}` to assign a rating (1-5) or null to skip.
+  </Step>
+
+  <Step title="Move to next quiz">
+    Rated quizzes are removed from the default queue (`all=false`). Continue to the next quiz.
+  </Step>
+</Steps>
+
+## Content Guidelines
+
+When moderating quizzes, watch for:
+
+### ✅ Good Content
+- Accurate information
+- Clear, well-written questions
+- Appropriate for educational use
+- Proper attribution for images
+- Reasonable time limits
+- Varied question types
+
+### ❌ Problematic Content
+- Spam or promotional content
+- Offensive or inappropriate material
+- Plagiarized questions
+- Copyright-infringing images
+- Misleading or incorrect information
+- Personal information or doxxing
+
+<Warning>
+If you encounter quizzes with severe policy violations, contact your system administrator for immediate action beyond just rating.
+</Warning>
+
+## Imported Kahoot Quizzes
+
+Quizzes imported from Kahoot are marked in the database:
+
+```python
+quiz.imported_from_kahoot: bool
+```
+
+These quizzes:
+- Have `imported_from_kahoot: true` in the response
+- Store original Kahoot ID in `kahoot_id` field
+- Start with `mod_rating: null` after import
+- Require manual moderation review
+
+<Tip>
+Imported Kahoot quizzes may need extra scrutiny for copyright issues. Verify that the content is appropriate for your ClassQuiz instance.
+</Tip>
+
+## Error Handling
+
+### Quiz Not Found
+
+```json
+{
+  "detail": "Quiz not found"
+}
+```
+HTTP 404 - The quiz ID doesn't exist or isn't public.
+
+### Invalid Page Number
+
+```json
+{
+  "detail": "page 1 is the first"
+}
+```
+HTTP 400 - Page numbers must be >= 1.
+
+### Unauthorized
+
+HTTP 401/403 - User doesn't have moderator permissions.
+
+## Database Schema
+
+Moderation-related fields in the Quiz model:
+
+```python
+class Quiz(ormar.Model):
+    id: uuid.UUID
+    public: bool  # Must be true to appear in moderation queue
+    mod_rating: int | None  # Moderation score
+    imported_from_kahoot: bool | None  # Flag for imported content
+    created_at: datetime
+    updated_at: datetime  # Used for sorting review queue
+    user_id: uuid.UUID  # Quiz creator
+```
+
+## Filtering and Search
+
+The moderation endpoints filter quizzes by:
+
+**Public only**:
+```python
+.filter(Quiz.public == True)
+```
+
+**Unrated only** (when `all=false`):
+```python
+.filter(Quiz.mod_rating == None)
+```
+
+**Sorted by update time**:
+```python
+.order_by(Quiz.updated_at.desc())
+```
+
+This ensures moderators see:
+1. Only public quizzes (private quizzes aren't moderated)
+2. Recently updated quizzes first
+3. Unrated quizzes by default
+
+## Integration with Search
+
+Moderation ratings can be used to filter search results:
+
+```python
+# Example: Only show quizzes with rating >= 3 in search
+high_quality = await Quiz.objects.filter(
+    public=True,
+    mod_rating__gte=3
+).all()
+```
+
+Your ClassQuiz instance may implement:
+- Minimum rating thresholds for public search
+- Sorting by rating in browse pages
+- Filtering low-rated content from recommendations
+
+## Best Practices
+
+### For Moderators
+
+<Steps>
+  <Step title="Be consistent">
+    Use the same rating criteria for all quizzes. Document your guidelines and follow them.
+  </Step>
+
+  <Step title="Be fair">
+    Judge content objectively based on quality, not personal preferences.
+  </Step>
+
+  <Step title="Leave notes">
+    If your system supports moderation notes, document reasons for low ratings.
+  </Step>
+
+  <Step title="Act quickly on violations">
+    Escalate serious policy violations to administrators immediately.
+  </Step>
+</Steps>
+
+### For Instance Administrators
+
+1. **Clear guidelines**: Publish moderation standards for your instance
+2. **Multiple moderators**: Distribute workload among trusted users
+3. **Appeals process**: Allow quiz creators to appeal ratings
+4. **Automation**: Consider auto-hiding quizzes with rating < 2
+5. **Metrics**: Track moderation velocity and rating distribution
+
+## API Implementation
+
+The moderation system is a lightweight API with three endpoints:
+
+1. **Status check** (`/status`): Verify moderator permissions
+2. **Review queue** (`/quizzes`): Get quizzes to review with pagination
+3. **Set rating** (`/rating/set/{quiz_id}`): Assign or remove ratings
+
+All endpoints require moderator authentication via `get_current_moderator` dependency.
+
+See complete implementation in `classquiz/routers/moderation.py:1-62`.
+
+## Future Enhancements
+
+Potential moderation features (not yet implemented):
+
+- Moderation history log
+- Multi-moderator consensus
+- Automated spam detection
+- Report system for users
+- Moderator performance metrics
+- Bulk rating operations
+- Custom rating categories (accuracy, design, educational value)
+
+<Tip>
+If you're building moderation tooling, consider tracking moderator actions in a separate audit log table for accountability and analytics.
+</Tip>

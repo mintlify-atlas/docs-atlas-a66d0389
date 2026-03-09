@@ -1,0 +1,291 @@
+---
+title: 'Community Features'
+description: 'User profiles, quiz ratings, and community interactions'
+---
+
+## Get User Profile
+
+<api>GET /api/v1/community/user/{user_id}</api>
+
+Get public profile information for a user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  User's unique ID
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="uuid">
+  User ID
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  Username
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  Account creation timestamp
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "username": "teacher123",
+  "created_at": "2023-06-15T10:30:00Z"
+}
+```
+
+---
+
+## Get User's Quizzes
+
+<api>GET /api/v1/community/quizzes/{user_id}</api>
+
+Get all public quizzes created by a specific user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  User's unique ID
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="imported" type="boolean">
+  Filter by import status:
+  - `true`: Only show imported quizzes
+  - `false`: Only show original quizzes
+  - `null` (default): Show all quizzes
+</ParamField>
+
+### Response
+
+Array of quiz objects (excludes `questions` and `user_id` fields):
+
+<ResponseField name="id" type="uuid">
+  Quiz ID
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Quiz title
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Quiz description
+</ResponseField>
+
+<ResponseField name="public" type="boolean">
+  Whether quiz is public (always true in this endpoint)
+</ResponseField>
+
+<ResponseField name="cover_image" type="string">
+  Cover image URL
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  Creation timestamp
+</ResponseField>
+
+<ResponseField name="updated_at" type="datetime">
+  Last update timestamp
+</ResponseField>
+
+<ResponseField name="likes" type="integer">
+  Number of likes
+</ResponseField>
+
+<ResponseField name="dislikes" type="integer">
+  Number of dislikes
+</ResponseField>
+
+<ResponseField name="plays" type="integer">
+  Number of times played
+</ResponseField>
+
+<ResponseField name="views" type="integer">
+  Number of views
+</ResponseField>
+
+<ResponseField name="imported_from_kahoot" type="boolean">
+  Whether imported from Kahoot
+</ResponseField>
+
+### Example Response
+
+```json
+[
+  {
+    "id": "789e4567-e89b-12d3-a456-426614174000",
+    "title": "World Geography Quiz",
+    "description": "Test your geography knowledge",
+    "public": true,
+    "cover_image": "https://...",
+    "created_at": "2024-01-15T14:20:00Z",
+    "updated_at": "2024-01-20T09:15:00Z",
+    "likes": 45,
+    "dislikes": 3,
+    "plays": 230,
+    "views": 567,
+    "imported_from_kahoot": false
+  }
+]
+```
+
+---
+
+## Rate Quiz
+
+<api>POST /api/v1/community/rate/{quiz_id}</api>
+
+Like or dislike a public quiz.
+
+### Path Parameters
+
+<ParamField path="quiz_id" type="uuid" required>
+  Quiz ID to rate
+</ParamField>
+
+### Request Body
+
+<ParamField body="type" type="string" required>
+  Rating type: `LIKE` or `DISLIKE`
+</ParamField>
+
+### Authentication
+
+Required
+
+### Example Request
+
+```json
+{
+  "type": "LIKE"
+}
+```
+
+### Response
+
+Returns success (no body) if rating is recorded.
+
+### Behavior
+
+- **New rating**: Creates the rating and increments quiz like/dislike count
+- **Same rating**: Returns `409 Conflict` - rating already exists
+- **Change rating**: Removes old rating, creates new one, updates both counts
+
+### Error Codes
+
+- `404`: Quiz not found or not public
+- `409`: Already rated with the same type
+
+### Example: Changing Rating
+
+```javascript
+// User previously liked the quiz, now wants to dislike
+// 1. Old LIKE rating is deleted
+// 2. Quiz likes count: 45 → 44
+// 3. New DISLIKE rating is created  
+// 4. Quiz dislikes count: 3 → 4
+```
+
+---
+
+## Rating System Details
+
+### Rating Storage
+
+Ratings are stored in the `rating` table with:
+- Unique constraint on (user, quiz) - one rating per user per quiz
+- `positive` field: `true` for likes, `false` for dislikes
+- `created_at` timestamp
+
+### Quiz Metrics
+
+Quizzes track aggregate metrics:
+- `likes` - Total number of likes
+- `dislikes` - Total number of dislikes  
+- `views` - Incremented when viewing public quiz
+- `plays` - Incremented when starting a game
+
+### Public Quizzes Only
+
+Only public quizzes can be rated. Private quizzes return `404`.
+
+---
+
+## Community Features Usage
+
+### User Profile Page
+
+```javascript
+// Fetch user profile
+const profile = await fetch(`/api/v1/community/user/${userId}`);
+
+// Fetch their public quizzes (excluding imports)
+const quizzes = await fetch(
+  `/api/v1/community/quizzes/${userId}?imported=false`
+);
+```
+
+### Quiz Rating
+
+```javascript
+// Like a quiz
+await fetch(`/api/v1/community/rate/${quizId}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ type: 'LIKE' })
+});
+
+// Change to dislike
+await fetch(`/api/v1/community/rate/${quizId}`, {
+  method: 'POST',  
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ type: 'DISLIKE' })
+});
+```
+
+### Leaderboard/Popular Quizzes
+
+Combine with search endpoint:
+
+```bash
+curl -X POST https://classquiz.example.com/api/v1/search/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "q": "",
+    "limit": 10,
+    "sort": ["likes:desc"],
+    "filter": "imported_from_kahoot = false"
+  }'
+```
+
+---
+
+## Privacy Considerations
+
+### Public Information
+
+- Username
+- User ID
+- Account creation date
+- Public quizzes
+
+### Private Information
+
+**Not exposed** by community endpoints:
+- Email address
+- Password  
+- Authentication methods
+- API keys
+- Session information
+- Private quizzes
+- Storage usage
+
+### User Avatar
+
+User avatars are accessible via `/api/v1/users/avatar/{user_id}` (see Users API documentation).

@@ -1,0 +1,605 @@
+---
+title: Contributing to ClassQuiz
+description: Guide for contributing to the ClassQuiz open-source project
+---
+
+# Contributing to ClassQuiz
+
+Thank you for your interest in contributing to ClassQuiz! This guide will help you get started with development and contributing to the project.
+
+## Quick Links
+
+- **Repository:** [github.com/mawoka-myblock/ClassQuiz](https://github.com/mawoka-myblock/ClassQuiz)
+- **Documentation:** [classquiz.de/docs](https://classquiz.de/docs)
+- **Community:** [Matrix Space](https://matrix.to/#/#classquiz:matrix.org)
+- **Hosted Instance:** [classquiz.de](https://classquiz.de)
+
+## Code of Conduct
+
+Be respectful and constructive. ClassQuiz is an educational project, and we want to maintain a welcoming environment for all contributors.
+
+## Ways to Contribute
+
+### 1. Report Bugs
+
+Found a bug? Please report it!
+
+**Before reporting:**
+- Search existing issues to avoid duplicates
+- Try to reproduce with adblocker disabled (for Sentry error tracking)
+
+**For security bugs:**
+- Contact the maintainer at [mawoka.eu/contact](https://mawoka.eu/contact)
+- Do NOT open a public issue for security vulnerabilities
+
+**For regular bugs:**
+- Open an issue on [GitHub Issues](https://github.com/mawoka-myblock/ClassQuiz/issues)
+- Include:
+  - Steps to reproduce
+  - Expected behavior
+  - Actual behavior
+  - Browser/OS version
+  - Console errors (if any)
+
+### 2. Suggest Features
+
+Have an idea for ClassQuiz?
+- Open a GitHub issue with the `enhancement` label
+- Describe the feature and its use case
+- Explain why it would benefit ClassQuiz users
+
+### 3. Translate
+
+ClassQuiz uses [Weblate](https://hosted.weblate.org/projects/classquiz/frontend/) for translations.
+
+**To translate:**
+1. Go to [Weblate project](https://hosted.weblate.org/projects/classquiz/frontend/)
+2. Select your language
+3. Start translating!
+
+**Request a new language:**
+- If your language isn't available, open a GitHub issue to request it
+
+### 4. Write Code
+
+Contribute features, bug fixes, or improvements!
+
+## Development Setup
+
+ClassQuiz is a monorepo with a Python backend and SvelteKit frontend.
+
+### Prerequisites
+
+**Required:**
+- Python 3.11+
+- Node.js 18+ and npm/pnpm
+- PostgreSQL 13+
+- Redis 6+
+
+**Optional:**
+- Meilisearch (for search functionality)
+- Docker & Docker Compose (for easy setup)
+
+### Repository Structure
+
+```
+ClassQuiz/
+├── classquiz/              # Python backend package
+│   ├── __init__.py        # FastAPI app
+│   ├── routers/           # API endpoints
+│   ├── socket_server/     # Socket.IO handlers
+│   ├── db/                # Database models
+│   └── config.py          # Configuration
+├── frontend/              # SvelteKit frontend
+│   ├── src/
+│   │   ├── routes/        # Pages and API routes
+│   │   └── lib/           # Components and utilities
+│   └── package.json
+├── alembic/               # Database migrations
+├── Pipfile                # Python dependencies
+├── docker-compose.yml     # Development environment
+└── README.md
+```
+
+### Setup with Docker (Recommended)
+
+**1. Clone the repository:**
+```bash
+git clone https://github.com/mawoka-myblock/ClassQuiz.git
+cd ClassQuiz
+```
+
+**2. Start services:**
+```bash
+docker-compose up -d postgres redis meilisearch
+```
+
+**3. Install Python dependencies:**
+```bash
+pip install pipenv
+pipenv install --dev
+```
+
+**4. Set up environment variables:**
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+Minimal `.env` for development:
+```bash
+DB_URL=postgresql://postgres:mysecretpassword@localhost:5432/classquiz
+REDIS=redis://localhost:6379/0?decode_responses=True
+SECRET_KEY=your-secret-key-here
+MAIL_ADDRESS=noreply@localhost
+MAIL_PASSWORD=password
+MAIL_USERNAME=username
+MAIL_SERVER=localhost
+MAIL_PORT=1025
+SKIP_EMAIL_VERIFICATION=true
+STORAGE_BACKEND=local
+STORAGE_PATH=./storage
+MEILISEARCH_URL=http://localhost:7700
+```
+
+**5. Run database migrations:**
+```bash
+pipenv run alembic upgrade head
+```
+
+**6. Start the backend:**
+```bash
+pipenv run uvicorn classquiz:app --reload --port 8000
+```
+
+**7. Install frontend dependencies:**
+```bash
+cd frontend
+npm install  # or pnpm install
+```
+
+**8. Start the frontend:**
+```bash
+npm run dev
+```
+
+**9. Access the application:**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/api/docs
+
+### Manual Setup (Without Docker)
+
+**1. Install PostgreSQL:**
+```bash
+# Ubuntu/Debian
+sudo apt install postgresql postgresql-contrib
+
+# macOS
+brew install postgresql
+```
+
+**2. Create database:**
+```bash
+sudo -u postgres psql
+```
+```sql
+CREATE DATABASE classquiz;
+CREATE USER classquiz WITH PASSWORD 'password';
+GRANT ALL PRIVILEGES ON DATABASE classquiz TO classquiz;
+```
+
+**3. Install Redis:**
+```bash
+# Ubuntu/Debian
+sudo apt install redis-server
+
+# macOS
+brew install redis
+brew services start redis
+```
+
+**4. (Optional) Install Meilisearch:**
+```bash
+# Download and run
+curl -L https://install.meilisearch.com | sh
+./meilisearch
+```
+
+**5. Follow steps 1, 3-8 from Docker setup above**
+
+## Development Workflow
+
+### Backend Development
+
+**Run tests:**
+```bash
+pipenv run pytest
+```
+
+**Run with auto-reload:**
+```bash
+pipenv run uvicorn classquiz:app --reload
+```
+
+**Format code:**
+```bash
+pipenv run black classquiz/
+pipenv run isort classquiz/
+```
+
+**Type checking:**
+```bash
+pipenv run mypy classquiz/
+```
+
+**Create migration:**
+```bash
+pipenv run alembic revision --autogenerate -m "Description of changes"
+pipenv run alembic upgrade head
+```
+
+### Frontend Development
+
+**Run dev server:**
+```bash
+npm run dev
+```
+
+**Type checking:**
+```bash
+npm run check
+```
+
+**Lint:**
+```bash
+npm run lint
+```
+
+**Format:**
+```bash
+npm run format
+```
+
+**Build for production:**
+```bash
+npm run build
+```
+
+## Making Changes
+
+### 1. Create a Branch
+
+```bash
+git checkout -b feature/my-new-feature
+# or
+git checkout -b fix/bug-description
+```
+
+**Branch naming:**
+- `feature/` - New features
+- `fix/` - Bug fixes
+- `docs/` - Documentation
+- `refactor/` - Code refactoring
+- `test/` - Test additions/changes
+
+### 2. Write Code
+
+**Backend guidelines:**
+- Follow PEP 8 style guide
+- Use type hints
+- Write docstrings for public functions
+- Add tests for new features
+- Use async/await for I/O operations
+
+**Frontend guidelines:**
+- Follow TypeScript best practices
+- Use Svelte conventions
+- Keep components small and focused
+- Use TailwindCSS for styling
+- Add types for props and functions
+
+**Example backend route:**
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from classquiz.db.models import Quiz, User
+from classquiz.oauth import get_current_user
+
+router = APIRouter()
+
+@router.get("/quiz/{quiz_id}")
+async def get_quiz(
+    quiz_id: str,
+    user: User = Depends(get_current_user)
+) -> Quiz:
+    """Get a quiz by ID.
+    
+    Args:
+        quiz_id: UUID of the quiz
+        user: Authenticated user
+    
+    Returns:
+        Quiz object
+    
+    Raises:
+        HTTPException: If quiz not found
+    """
+    quiz = await Quiz.objects.get_or_none(id=quiz_id)
+    if quiz is None:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    return quiz
+```
+
+**Example frontend component:**
+```svelte
+<script lang="ts">
+	import { onMount } from 'svelte';
+
+	export let quizId: string;
+
+	interface Quiz {
+		id: string;
+		title: string;
+		questions: Question[];
+	}
+
+	let quiz: Quiz | null = null;
+	let loading = true;
+
+	onMount(async () => {
+		const response = await fetch(`/api/v1/quiz/${quizId}`);
+		quiz = await response.json();
+		loading = false;
+	});
+</script>
+
+{#if loading}
+	<p>Loading...</p>
+{:else if quiz}
+	<h1 class="text-2xl font-bold">{quiz.title}</h1>
+	<!-- More content -->
+{:else}
+	<p>Quiz not found</p>
+{/if}
+```
+
+### 3. Write Tests
+
+**Backend tests (pytest):**
+```python
+import pytest
+from httpx import AsyncClient
+from classquiz import app
+
+@pytest.mark.asyncio
+async def test_get_quiz():
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.get("/api/v1/quiz/some-id")
+        assert response.status_code == 200
+        data = response.json()
+        assert "title" in data
+```
+
+**Frontend tests:**
+- ClassQuiz doesn't currently have extensive frontend tests
+- Contributions to add testing are welcome!
+
+### 4. Format Commits
+
+ClassQuiz uses [Gitmoji](https://gitmoji.dev/) for commit messages.
+
+**Format:**
+```
+:emoji: Short description
+
+Longer explanation if needed
+```
+
+**Common emojis:**
+- ✨ `:sparkles:` - New feature
+- 🐛 `:bug:` - Bug fix
+- 📝 `:memo:` - Documentation
+- 🎨 `:art:` - Code style/formatting
+- ♻️ `:recycle:` - Refactoring
+- ⚡️ `:zap:` - Performance improvement
+- 🔒️ `:lock:` - Security fix
+- ⬆️ `:arrow_up:` - Upgrade dependencies
+- ✅ `:white_check_mark:` - Add tests
+
+**Examples:**
+```bash
+git commit -m ":sparkles: Add export quiz to PDF feature"
+git commit -m ":bug: Fix answer scoring for range questions"
+git commit -m ":memo: Update API documentation for quiz endpoints"
+```
+
+### 5. Push and Create PR
+
+```bash
+git push origin feature/my-new-feature
+```
+
+**Then on GitHub:**
+1. Open a Pull Request
+2. Describe your changes
+3. Link related issues (e.g., "Fixes #123")
+4. Wait for review
+
+**PR description template:**
+```markdown
+## Description
+Brief description of changes
+
+## Changes
+- List of specific changes
+- Made in this PR
+
+## Testing
+How to test these changes
+
+## Screenshots
+(If applicable)
+
+## Checklist
+- [ ] Code follows style guidelines
+- [ ] Tests added/updated
+- [ ] Documentation updated
+- [ ] Commits use Gitmoji
+```
+
+## Code Review Process
+
+1. **Automated checks:** CI runs linting, type checking, and tests
+2. **Manual review:** Maintainer reviews code
+3. **Revisions:** Address feedback if needed
+4. **Merge:** Once approved, PR is merged
+
+**What reviewers look for:**
+- Code quality and style
+- Test coverage
+- Documentation
+- Security implications
+- Performance impact
+- Breaking changes
+
+## License
+
+ClassQuiz is licensed under the [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/).
+
+**IMPORTANT:** This is a copyleft license. You **MUST publish any changes** you make to the source code.
+
+**What this means:**
+- ✅ You can use ClassQuiz commercially
+- ✅ You can modify the code
+- ✅ You can distribute it
+- ❌ You MUST share your modifications
+- ❌ You MUST use the same license
+- ❌ You MUST provide source code
+
+**When contributing:**
+- By submitting a PR, you agree to license your contribution under MPL-2.0
+- Add SPDX headers to new files:
+
+```python
+# SPDX-FileCopyrightText: 2023 Your Name
+#
+# SPDX-License-Identifier: MPL-2.0
+```
+
+```html
+<!--
+SPDX-FileCopyrightText: 2023 Your Name
+
+SPDX-License-Identifier: MPL-2.0
+-->
+```
+
+## Getting Help
+
+**Need help contributing?**
+
+1. **Join Matrix:** [#classquiz:matrix.org](https://matrix.to/#/#classquiz:matrix.org)
+2. **Read docs:** [classquiz.de/docs/develop](https://classquiz.de/docs/develop)
+3. **Ask in issues:** Comment on related issues
+4. **Check discussions:** GitHub Discussions (if enabled)
+
+## Development Resources
+
+### Backend
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Ormar ORM](https://collerek.github.io/ormar/)
+- [Socket.IO Python](https://python-socketio.readthedocs.io/)
+- [Pydantic](https://docs.pydantic.dev/)
+
+### Frontend
+- [SvelteKit](https://kit.svelte.dev/)
+- [Svelte](https://svelte.dev/)
+- [TailwindCSS](https://tailwindcss.com/)
+- [Socket.IO Client](https://socket.io/docs/v4/client-api/)
+- [TypeScript](https://www.typescriptlang.org/)
+
+### Tools
+- [Alembic](https://alembic.sqlalchemy.org/) - Database migrations
+- [Meilisearch](https://www.meilisearch.com/) - Search engine
+- [Redis](https://redis.io/) - Cache and sessions
+
+## Architecture References
+
+Before contributing, familiarize yourself with:
+
+- [System Architecture](/developer/architecture) - High-level architecture overview
+- [Socket.IO Events](/developer/socket-events) - Real-time communication reference
+- [Database Models](/developer/database-models) - Database schema documentation
+
+## Common Tasks
+
+### Add a New API Endpoint
+
+1. Create/edit router file in `classquiz/routers/`
+2. Define Pydantic models for request/response
+3. Implement endpoint with type hints
+4. Add to main app in `classquiz/__init__.py`
+5. Test with `/api/docs` interactive documentation
+
+### Add a New Database Model
+
+1. Add model to `classquiz/db/models.py`
+2. Create Alembic migration: `alembic revision --autogenerate -m "Add model"`
+3. Review generated migration
+4. Apply: `alembic upgrade head`
+
+### Add a New Socket.IO Event
+
+1. Add event handler to `classquiz/socket_server/__init__.py`
+2. Define Pydantic model in `classquiz/socket_server/models.py`
+3. Implement handler logic
+4. Document in Socket.IO Events page
+5. Implement client-side handler in frontend
+
+### Add a New Frontend Page
+
+1. Create file in `frontend/src/routes/`
+2. Add `+page.svelte` for component
+3. Add `+page.ts` for data loading (if needed)
+4. Add `+page.server.ts` for server-side logic (if needed)
+5. Use TailwindCSS for styling
+
+## Performance Guidelines
+
+**Backend:**
+- Use async/await for all I/O
+- Avoid N+1 queries (use `.select_related()`)
+- Cache frequently accessed data in Redis
+- Use database indexes for common queries
+- Set appropriate Redis expiry times
+
+**Frontend:**
+- Lazy load heavy components
+- Use SvelteKit's streaming and lazy loading
+- Optimize images (use WebP, thumbnails)
+- Minimize bundle size
+- Use code splitting
+
+## Security Guidelines
+
+**Always:**
+- Validate user input with Pydantic
+- Use parameterized queries (Ormar does this)
+- Hash passwords (use `passlib`)
+- Check authorization for protected endpoints
+- Sanitize HTML output (use DOMPurify)
+- Use HTTPS in production
+- Set secure cookie flags
+
+**Never:**
+- Store passwords in plaintext
+- Trust user input without validation
+- Expose sensitive data in API responses
+- Commit secrets to Git
+- Use `eval()` or similar on user input
+
+## Thank You!
+
+Your contributions help make ClassQuiz better for students and teachers worldwide. Every contribution, no matter how small, is appreciated!
+
+**Happy coding!** 🎉

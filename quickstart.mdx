@@ -1,80 +1,251 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quick Start Guide'
+description: 'Get started with ClassQuiz by creating your account and your first interactive quiz in minutes'
 ---
 
-## Get started in three steps
+## Welcome to ClassQuiz
 
-Get your documentation site running locally and make your first customization.
+ClassQuiz is an open-source quiz platform designed for interactive learning. Teachers can create engaging quizzes while students compete in real-time, making learning fun and collaborative.
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Register Your Account">
+    Navigate to the ClassQuiz registration page at `/account/register` or visit [classquiz.de/account/register](https://classquiz.de/account/register).
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+    ### Required Information
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    Fill out the registration form with:
+    - **Email address**: A valid email for account verification
+    - **Username**: 3-20 characters, unique identifier
+    - **Password**: Minimum 8 characters, maximum 100 characters
+    - **Password confirmation**: Must match your password
 
-### Step 2: Deploy your changes
+    <Note>
+      You must accept both the Privacy Policy and Terms of Service to create an account.
+    </Note>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ### Email Verification
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    After submitting the form, check your mailbox for a verification email. Click the confirmation link to activate your account.
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    <Tip>
+      If email verification is disabled on your self-hosted instance (`SKIP_EMAIL_VERIFICATION=True`), you can start using your account immediately.
+    </Tip>
 
-### Step 3: Go live
+    ### Alternative Sign-In Methods
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    If enabled on your instance, you can also register using:
+    - **Google Account**: OAuth integration for quick sign-up
+    - **GitHub Account**: Sign in with your developer account
+    - **Custom OpenID Provider**: If configured by your administrator
+  </Step>
 
-## Next steps
+  <Step title="Access Your Dashboard">
+    After logging in, you'll be redirected to your dashboard at `/dashboard`. This is your central hub for managing quizzes.
 
-Now that you have your docs running, explore these key features:
+    ### Dashboard Features
+
+    From your dashboard, you can:
+    - **Create** new quizzes or quiztivities
+    - **Import** quizzes from Kahoot! or other sources
+    - **View Results** from past quiz sessions
+    - **Manage Files** in your media library
+    - **Access Settings** to customize your account
+
+    <CardGroup cols={2}>
+      <Card title="Quiz" icon="gamepad">
+        Live, competitive quiz sessions where students answer questions in real-time and compete for the top score.
+      </Card>
+      <Card title="Quiztivity" icon="pencil">
+        Self-paced activities where students work through questions at their own speed without competition.
+      </Card>
+    </CardGroup>
+  </Step>
+
+  <Step title="Create Your First Quiz">
+    Click the **Create** button on your dashboard, then select **Quiz** to start building.
+
+    ### Quiz Configuration
+
+    Set up your quiz with:
+    - **Title**: Give your quiz a descriptive name
+    - **Description**: Add context for your students (optional)
+    - **Public/Private**: Control visibility in the quiz explorer
+    - **Cover Image**: Upload or select a visual from your media library
+
+    ### Adding Questions
+
+    ClassQuiz supports multiple question types:
+
+    <Accordion title="Multiple Choice (ABCD)">
+      Standard multiple-choice questions with up to 4 answer options. Mark correct answers and set a time limit (e.g., 20 seconds).
+    </Accordion>
+
+    <Accordion title="True/False">
+      Simple binary questions for quick comprehension checks.
+    </Accordion>
+
+    <Accordion title="Text Input">
+      Free-form text responses for open-ended questions.
+    </Accordion>
+
+    <Accordion title="Order Questions">
+      Students arrange items in the correct sequence.
+    </Accordion>
+
+    <Accordion title="Slide">
+      Add informational slides between questions to provide context or instructions.
+    </Accordion>
+
+    ### Formatting Support
+
+    Questions support basic HTML formatting:
+    ```html
+    <b>bold</b>, <strong>strong</strong>, <i>italic</i>, <em>emphasis</em>,
+    <small>small</small>, <mark>highlight</mark>, <del>strikethrough</del>,
+    <sub>subscript</sub>, <sup>superscript</sup>
+    ```
+
+    ### Media Support
+
+    Enhance questions with:
+    - **Images**: PNG, JPEG, GIF, WebP formats
+    - **Videos**: MP4 format
+
+    Upload media to your file library at `/edit/files` for reuse across quizzes.
+
+    <Warning>
+      Keep media file sizes reasonable to ensure smooth gameplay, especially for students with slower connections.
+    </Warning>
+  </Step>
+
+  <Step title="Start Your Quiz Game">
+    Once your quiz is ready, click the **Play** button (▶️) from your dashboard.
+
+    ### Game Setup
+
+    1. **Choose Game Mode**:
+       - **Standard**: Classic competitive format
+       - **Custom**: Adjust settings for your needs
+
+    2. **Share Game PIN**: Students join at `/play` by entering the unique game code
+
+    3. **Wait for Players**: Monitor the lobby as students join
+
+    4. **Start Game**: Begin when all students are ready
+
+    ### During the Game
+
+    As the quiz host, you'll:
+    - Advance through questions at your pace
+    - See live answer submissions
+    - Display results after each question
+    - View the real-time leaderboard
+
+    ### Student Experience
+
+    Students navigate to `/play` and:
+    1. Enter the game PIN
+    2. Choose a username (3-20 characters)
+    3. Wait in the lobby for the game to start
+    4. Answer questions as they appear
+    5. See their score and ranking after each question
+
+    <Note>
+      Students can rejoin a game if disconnected - their session is saved via cookies for up to 1 hour.
+    </Note>
+  </Step>
+
+  <Step title="Review Results">
+    After the quiz ends, access detailed analytics at `/results/[result_id]`.
+
+    ### Results Dashboard
+
+    The results page includes three tabs:
+
+    #### Overview Tab
+    - Quiz title and timestamp
+    - Player scores and rankings
+    - Summary statistics
+
+    #### Players Tab
+    - Individual student performance
+    - Custom field data (if configured)
+    - Per-player answer breakdown
+
+    #### Questions Tab
+    - Question-by-question analysis
+    - Answer distribution
+    - Correct answer percentages
+
+    <Tip>
+      Access all your past quiz results from the **Results** button on your dashboard at any time.
+    </Tip>
+
+    ### Download Results
+
+    Export quiz data for further analysis:
+    - Click the download button (⬇️) on your dashboard
+    - Save in ClassQuiz's native `.cqa` format
+    - Import into other ClassQuiz instances or use for backup
+  </Step>
+</Steps>
+
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Import from Kahoot!" icon="file-import" href="/guides/import-from-kahoot">
+    Migrate your existing Kahoot! quizzes to ClassQuiz
+  </Card>
+  <Card title="Self-Hosting" icon="server" href="/self-hosting">
+    Deploy your own ClassQuiz instance with Docker
+  </Card>
+  <Card title="Community Features" icon="users" href="/features/community">
+    Browse and share quizzes in the public marketplace
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Integrate ClassQuiz with your applications
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Tips for Great Quizzes
+
+<AccordionGroup>
+  <Accordion title="Optimize Question Timing">
+    Set time limits based on question complexity:
+    - Simple multiple choice: 10-15 seconds
+    - Complex questions requiring reading: 30-60 seconds
+    - Text input questions: 45-90 seconds
+  </Accordion>
+
+  <Accordion title="Use Media Effectively">
+    - Add cover images to make quizzes visually appealing
+    - Use images in questions to test visual comprehension
+    - Keep file sizes under 2MB for best performance
+    - Preview your quiz on mobile to ensure readability
+  </Accordion>
+
+  <Accordion title="Engage Students">
+    - Mix question types to maintain interest
+    - Add slides between sections to provide context
+    - Use the description field to explain objectives
+    - Test your quiz before using it with students
+  </Accordion>
+
+  <Accordion title="Manage Your Content">
+    - Use descriptive titles for easy searching
+    - Organize media files in your file library
+    - Make quizzes public to share with the community
+    - Download backups of your important quizzes
+  </Accordion>
+</AccordionGroup>
+
+## Get Help
+
+<CardGroup cols={2}>
+  <Card title="Community Support" icon="comments">
+    Join the [Matrix Space](https://matrix.to/#/#classquiz:matrix.org) for community help and discussions
+  </Card>
+  <Card title="Report Issues" icon="bug">
+    Found a bug? Report it on [GitHub](https://github.com/mawoka-myblock/ClassQuiz/issues)
+  </Card>
+</CardGroup>

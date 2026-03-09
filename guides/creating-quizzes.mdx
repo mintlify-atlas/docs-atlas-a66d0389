@@ -1,0 +1,361 @@
+---
+title: Creating Engaging Quizzes
+description: Best practices and guidelines for creating high-quality quizzes in ClassQuiz
+---
+
+Creating effective quizzes requires careful planning and attention to detail. This guide covers best practices for building engaging, educational quizzes that work well in ClassQuiz.
+
+## Quiz Structure
+
+Every quiz in ClassQuiz consists of:
+- **Metadata**: Title, description, cover image, and background styling
+- **Questions**: A list of quiz questions with various types and configurations
+- **Visibility**: Public or private access control
+
+## Supported Question Types
+
+ClassQuiz supports 7 different question types defined in `classquiz/db/models.py:131-138`:
+
+### ABCD (Multiple Choice)
+
+The most common question type with up to 4 answer choices.
+
+```json
+{
+  "question": "What is the capital of France?",
+  "type": "ABCD",
+  "time": "30",
+  "answers": [
+    {"answer": "Paris", "right": true, "color": "#D6EDC9"},
+    {"answer": "London", "right": false, "color": "#B07156"},
+    {"answer": "Berlin", "right": false, "color": "#7F7057"},
+    {"answer": "Madrid", "right": false, "color": "#4E6E58"}
+  ]
+}
+```
+
+<Tip>
+For ABCD questions, you can mark multiple answers as correct for "select all that apply" style questions.
+</Tip>
+
+### CHECK (Checkbox)
+
+Similar to ABCD but explicitly designed for multiple correct answers.
+
+```json
+{
+  "question": "Which of these are programming languages?",
+  "type": "CHECK",
+  "time": "45",
+  "answers": [
+    {"answer": "Python", "right": true},
+    {"answer": "HTML", "right": false},
+    {"answer": "JavaScript", "right": true},
+    {"answer": "CSS", "right": false}
+  ]
+}
+```
+
+### RANGE (Numeric Range)
+
+Asks players to select a value within a range. Perfect for estimation questions.
+
+```json
+{
+  "question": "How many planets are in our solar system?",
+  "type": "RANGE",
+  "time": "30",
+  "answers": {
+    "min": 1,
+    "max": 15,
+    "min_correct": 8,
+    "max_correct": 8
+  }
+}
+```
+
+### TEXT (Open-ended Text)
+
+Accepts text input from players. Supports case-sensitive matching.
+
+```json
+{
+  "question": "What is H2O more commonly known as?",
+  "type": "TEXT",
+  "time": "30",
+  "answers": [
+    {"answer": "water", "case_sensitive": false},
+    {"answer": "Water", "case_sensitive": false}
+  ]
+}
+```
+
+<Note>
+Provide multiple acceptable variations of the answer to improve player experience (e.g., "water", "Water", "H2O").
+</Note>
+
+### VOTING (Poll)
+
+Non-graded questions where players vote on options. Great for icebreakers and opinions.
+
+```json
+{
+  "question": "What's your favorite programming language?",
+  "type": "VOTING",
+  "time": "20",
+  "answers": [
+    {"answer": "Python", "image": null, "color": "#D6EDC9"},
+    {"answer": "JavaScript", "image": null, "color": "#B07156"},
+    {"answer": "Java", "image": null, "color": "#7F7057"}
+  ]
+}
+```
+
+### ORDER (Ordering)
+
+Players arrange items in the correct sequence.
+
+```json
+{
+  "question": "Order these events chronologically:",
+  "type": "ORDER",
+  "time": "45",
+  "answers": [
+    {"answer": "World War I", "image": null},
+    {"answer": "World War II", "image": null},
+    {"answer": "Cold War", "image": null}
+  ]
+}
+```
+
+### SLIDE (Information Slide)
+
+Non-interactive content slides for instructions or information.
+
+```json
+{
+  "question": "Welcome to the Quiz!",
+  "type": "SLIDE",
+  "time": "10",
+  "answers": "Let's get started with some fun questions!"
+}
+```
+
+## Best Practices
+
+### Time Limits
+
+<Steps>
+  <Step title="Keep it reasonable">
+    Time limits are in seconds. Typical ranges:
+    - **Simple recall**: 10-20 seconds
+    - **Reading comprehension**: 30-45 seconds
+    - **Complex problems**: 60-120 seconds
+  </Step>
+
+  <Step title="Test your quiz">
+    Always play through your quiz to ensure time limits are appropriate. What seems easy to you might be challenging for players.
+  </Step>
+
+  <Step title="Consider reading time">
+    If your question includes an image or long text, add extra time for players to process the information.
+  </Step>
+</Steps>
+
+### Question Writing
+
+**DO:**
+- Use clear, unambiguous language
+- Keep questions concise
+- Avoid double negatives
+- Include images to enhance engagement
+- Vary question types to maintain interest
+
+**DON'T:**
+- Use trick questions that frustrate players
+- Include questions that require external knowledge
+- Make all questions the same difficulty
+- Use unclear or low-quality images
+
+### Answer Choices
+
+<Tip>
+For ABCD questions, make all incorrect answers plausible. Avoid obvious "throwaway" answers that make the quiz too easy.
+</Tip>
+
+- **Consistency**: Keep answer lengths similar
+- **Randomization**: Enable answer shuffling to prevent pattern memorization
+- **Colors**: Use the default color scheme for accessibility
+
+## Visual Design
+
+### Cover Images
+
+Add a compelling cover image to your quiz:
+
+```json
+{
+  "title": "World Geography Quiz",
+  "cover_image": "abc123def456",
+  "background_color": "#2C3E50"
+}
+```
+
+Cover images are displayed:
+- In quiz browsing lists
+- On the game lobby screen
+- When sharing quiz links
+
+### Background Styling
+
+Customize quiz appearance with:
+- `background_color`: Solid color hex code
+- `background_image`: Storage item ID for background image
+
+<Note>
+If both `background_color` and `background_image` are set, the image takes precedence.
+</Note>
+
+## Creating a Quiz via API
+
+**Endpoint**: `POST /api/v1/quiz`
+
+**Request Body**:
+```json
+{
+  "title": "My Awesome Quiz",
+  "description": "Test your knowledge!",
+  "public": false,
+  "cover_image": null,
+  "background_color": "#3498db",
+  "questions": [
+    {
+      "question": "What is 2 + 2?",
+      "type": "ABCD",
+      "time": "15",
+      "image": null,
+      "answers": [
+        {"answer": "4", "right": true, "color": "#D6EDC9"},
+        {"answer": "3", "right": false, "color": "#B07156"},
+        {"answer": "5", "right": false, "color": "#7F7057"},
+        {"answer": "22", "right": false, "color": "#4E6E58"}
+      ]
+    }
+  ]
+}
+```
+
+## Starting a Game
+
+Once your quiz is created, start a game session:
+
+**Endpoint**: `POST /api/v1/quiz/start/{quiz_id}`
+
+**Parameters**:
+- `game_mode`: Game mode identifier
+- `captcha_enabled`: Enable CAPTCHA for player join (default: true)
+- `custom_field`: Optional custom field prompt (e.g., "Student ID")
+- `randomize_answers`: Shuffle answer order (default: false)
+
+**Response**:
+```json
+{
+  "game_pin": "123456",
+  "game_id": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "My Awesome Quiz",
+  "description": "Test your knowledge!",
+  "started": false
+}
+```
+
+Players join using the 6-digit `game_pin` at `/play`.
+
+## Import and Export
+
+### Export to Excel
+
+Export your quiz structure to Excel for offline editing:
+
+**Endpoint**: `GET /api/v1/eximport/excel/{quiz_id}`
+
+The spreadsheet includes:
+- Quiz title and description
+- Question list with answers
+- Time limits
+- Correct answer indicators
+
+See `classquiz/routers/eximport.py:140-194` for implementation details.
+
+### Import from Excel
+
+Import quizzes from Excel files:
+
+**Endpoint**: `POST /api/v1/quiz/excel-import`
+
+**Body**: `multipart/form-data` with Excel file
+
+Excel format:
+- Row 5, Column B: Title
+- Row 6, Column B: Description
+- Row 13+: Questions with answers
+
+### Export as .cqa File
+
+ClassQuiz Archive (.cqa) format includes the quiz and all images:
+
+**Endpoint**: `GET /api/v1/eximport/{quiz_id}`
+
+The file contains:
+- Gzip-compressed quiz JSON
+- Embedded images as binary data
+- Special delimiters for parsing
+
+<Tip>
+Use .cqa export to share complete quizzes with images across ClassQuiz instances.
+</Tip>
+
+## Storage Management
+
+Images and media count toward your storage quota:
+
+- Check usage: `user.storage_used` (in bytes)
+- Free tier limit: `settings.free_storage_limit`
+- Storage check happens before import/upload operations
+
+## Quiz Visibility
+
+### Private Quizzes
+
+By default, quizzes are private (`public: false`):
+- Only visible to the creator
+- Not indexed in public search
+- Can be played by anyone with the direct link
+
+### Public Quizzes
+
+Making a quiz public (`public: true`):
+- Appears in quiz search results
+- Indexed by Meilisearch
+- Anyone can view and play
+- Subject to moderation review
+
+<Warning>
+Public quizzes may be reviewed by moderators and assigned a `mod_rating`. Low-rated quizzes may be hidden from search results.
+</Warning>
+
+## Performance Tips
+
+1. **Optimize images**: Compress images before uploading to reduce storage and load times
+2. **Limit question count**: 20-30 questions is ideal for engagement
+3. **Test on mobile**: Ensure questions are readable on small screens
+4. **Cache static content**: Use CDN for frequently accessed quizzes
+
+## Analytics
+
+Every quiz tracks:
+- `views`: How many times the quiz page was viewed
+- `plays`: Number of game sessions started
+- `likes`: Positive ratings
+- `dislikes`: Negative ratings
+
+These metrics help you understand quiz popularity and engagement.

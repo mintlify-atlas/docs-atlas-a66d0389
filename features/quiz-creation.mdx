@@ -1,0 +1,272 @@
+---
+title: Quiz Creation & Editing
+description: Learn how to create and edit quizzes in ClassQuiz with our powerful editor interface
+---
+
+## Overview
+
+ClassQuiz provides a comprehensive quiz editor that allows you to create engaging quizzes with multiple question types, custom styling, and rich media support. The editor supports both creating new quizzes and editing existing ones.
+
+## Creating a New Quiz
+
+### Getting Started
+
+To create a new quiz:
+
+1. Navigate to the dashboard
+2. Click the "Create Quiz" button
+3. You'll be redirected to the quiz editor at `/create`
+
+The editor automatically saves your progress to localStorage, so you won't lose your work if you accidentally close the tab.
+
+<Note>
+Quizzes created from the `/create` page are automatically assigned a unique UUID when saved.
+</Note>
+
+### Editor Workflow
+
+The quiz creation process follows this workflow:
+
+<Steps>
+  <Step title="Initialize Editor Session">
+    When you start creating a quiz, the system generates an edit session token (via `/api/v1/editor/start`) that's valid for 1 hour. This token manages your editing session and temporary image uploads.
+  </Step>
+  
+  <Step title="Build Your Quiz">
+    Add questions, configure settings, upload images, and customize the appearance of your quiz in the editor interface.
+  </Step>
+  
+  <Step title="Save Quiz">
+    When you click save, the editor calls `/api/v1/editor/finish` with your quiz data. The system validates all content, sanitizes HTML using bleach, and creates the quiz in the database.
+  </Step>
+</Steps>
+
+## Quiz Metadata
+
+Every quiz has the following metadata stored in the `Quiz` model (classquiz/db/models.py:183):
+
+```python
+class Quiz(ormar.Model):
+    id: uuid.UUID  # Unique identifier
+    public: bool  # Whether quiz appears in public marketplace
+    title: str  # Quiz title (sanitized HTML allowed)
+    description: str  # Quiz description (sanitized HTML allowed)
+    created_at: datetime  # Creation timestamp
+    updated_at: datetime  # Last update timestamp
+    user_id: uuid.UUID  # Quiz owner
+    questions: Json[list[QuizQuestion]]  # Array of questions
+    cover_image: Optional[str]  # Cover image URL
+    background_color: str | None  # Custom background color
+    background_image: str | None  # Background image URL
+```
+
+### Quiz Settings
+
+<AccordionGroup>
+  <Accordion title="Visibility Settings">
+    **Public vs Private Quizzes**
+    
+    - **Private** (default): Only you can see and use the quiz
+    - **Public**: Quiz appears in the community marketplace and search results
+    
+    Public quizzes are automatically indexed in Meilisearch for discovery.
+  </Accordion>
+  
+  <Accordion title="Visual Customization">
+    **Appearance Options**
+    
+    - **Cover Image**: Upload or link to a cover image
+    - **Background Color**: Set a custom hex color (e.g., `#FF5733`)
+    - **Background Image**: Add a background image URL
+    
+    All image URLs are validated before saving to ensure they're valid.
+  </Accordion>
+</AccordionGroup>
+
+## Editing Existing Quizzes
+
+### Edit Mode
+
+To edit an existing quiz:
+
+1. Go to your dashboard
+2. Find the quiz you want to edit
+3. Click the edit button
+4. You'll be redirected to `/edit?quiz_id={quiz_id}`
+
+The editor loads the existing quiz data via `/api/v1/quiz/get/{quiz_id}` (classquiz/routers/quiz.py:32).
+
+### Edit Session Management
+
+When editing a quiz, the system:
+
+<CardGroup cols={2}>
+  <Card title="Validates Ownership" icon="shield-check">
+    Ensures you own the quiz before allowing edits (classquiz/routers/editor.py:64)
+  </Card>
+  
+  <Card title="Tracks Changes" icon="clock-rotate-left">
+    Updates the `updated_at` timestamp when you save changes
+  </Card>
+  
+  <Card title="Manages Media" icon="images">
+    Handles deletion of old images when replaced with new ones
+  </Card>
+  
+  <Card title="Re-indexes Content" icon="magnifying-glass">
+    Updates search index if the quiz is public
+  </Card>
+</CardGroup>
+
+### Update Process
+
+When you save edits (classquiz/routers/editor.py:127):
+
+```python
+if session_data.edit:
+    quiz = old_quiz_data
+    quiz.title = quiz_input.title
+    quiz.public = quiz_input.public
+    quiz.description = quiz_input.description
+    quiz.updated_at = datetime.now()
+    quiz.questions = quiz_input.model_dump()["questions"]
+    quiz.cover_image = quiz_input.cover_image
+    quiz.background_color = quiz_input.background_color
+    quiz.background_image = quiz_input.background_image
+    quiz.mod_rating = None  # Reset moderation rating
+    await quiz.update()
+```
+
+<Warning>
+When you edit a public quiz, the `mod_rating` is reset to None. This ensures modified quizzes are re-reviewed if necessary.
+</Warning>
+
+## Content Sanitization
+
+All user-provided content is sanitized to prevent XSS attacks (classquiz/routers/editor.py:88):
+
+- Quiz titles and descriptions are cleaned using `bleach.clean()` with allowed HTML tags
+- Background colors are stripped of all HTML
+- Question text and answers are sanitized with allowed tags
+- Empty answers are converted to `None`
+
+Allowed HTML tags are defined in `ALLOWED_TAGS_FOR_QUIZ` configuration.
+
+## Image Management
+
+### Uploading Images
+
+Images can be added to:
+- Quiz cover image
+- Quiz background
+- Individual questions
+- Question answers (for voting type questions)
+
+### Image Validation
+
+All image URLs are validated using `check_image_string()` helper function:
+
+```python
+if quiz_input.cover_image is not None and not check_image_string(quiz_input.cover_image)[0]:
+    raise HTTPException(status_code=400, detail="image url is not valid")
+```
+
+Supported formats: `.gif`, `.jpg`, `.jpeg`, `.png`, `.svg`, `.webp`, `.jfif`
+
+### Storage Integration
+
+Images are tracked in the `StorageItem` model with metadata:
+- File size and MIME type
+- Upload timestamp
+- MD5 hash for deduplication
+- Relationships to quizzes using the image
+- Alt text and filename for accessibility
+
+## Import Features
+
+### Kahoot Import
+
+ClassQuiz supports importing quizzes from Kahoot:
+
+```python
+@router.post("/import/{quiz_id}")
+async def import_quiz_route(quiz_id: str, user: User = Depends(get_current_user)):
+    if user.storage_used > settings.free_storage_limit:
+        raise HTTPException(status_code=409, detail="Storage limit reached")
+    resp_data = await import_quiz(quiz_id, user)
+```
+
+Imported quizzes are marked with `imported_from_kahoot: True` and store the original `kahoot_id`.
+
+### Excel Import
+
+You can also import quizzes from Excel files:
+
+```python
+@router.post("/excel-import")
+async def import_from_excel(file: UploadFile = File(), user: User = Depends(get_current_user)):
+    quiz = await handle_import_from_excel(file.file, user)
+    return quiz
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Save Frequently" icon="floppy-disk">
+    The editor auto-saves to localStorage, but manually save to persist to the server
+  </Card>
+  
+  <Card title="Optimize Images" icon="image">
+    Use compressed images to stay within storage limits and improve loading times
+  </Card>
+  
+  <Card title="Test Before Publishing" icon="flask">
+    Create as private first, test with live games, then make public
+  </Card>
+  
+  <Card title="Use Descriptive Titles" icon="heading">
+    Clear titles help users find your quiz in search and improve discoverability
+  </Card>
+</CardGroup>
+
+## API Reference
+
+### Get Quiz
+
+```http
+GET /api/v1/quiz/get/{quiz_id}
+```
+
+Returns quiz data for editing. Requires authentication if quiz is private.
+
+### Start Editor Session
+
+```http
+POST /api/v1/editor/start
+```
+
+Parameters:
+- `edit` (boolean): Whether editing existing quiz
+- `quiz_id` (UUID, optional): ID of quiz to edit
+
+Returns edit session token valid for 1 hour.
+
+### Finish/Save Quiz
+
+```http
+POST /api/v1/editor/finish
+```
+
+Parameters:
+- `edit_id` (string): Session token from start endpoint
+- `quiz_input` (QuizInput): Complete quiz data
+
+Creates new quiz or updates existing one.
+
+### Delete Quiz
+
+```http
+DELETE /api/v1/quiz/delete/{quiz_id}
+```
+
+Deletes quiz and all associated images. Removes from search index.

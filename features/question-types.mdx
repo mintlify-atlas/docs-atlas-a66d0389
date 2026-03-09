@@ -1,0 +1,479 @@
+---
+title: Question Types
+description: Explore all supported question types in ClassQuiz, from multiple choice to interactive slides
+---
+
+## Overview
+
+ClassQuiz supports 7 different question types to create diverse and engaging quizzes. Each question type has unique answer formats and validation rules defined in the data models.
+
+## Question Type Enumeration
+
+All question types are defined in the `QuizQuestionType` enum (classquiz/db/models.py:131):
+
+```python
+class QuizQuestionType(str, Enum):
+    ABCD = "ABCD"
+    RANGE = "RANGE"
+    VOTING = "VOTING"
+    SLIDE = "SLIDE"
+    TEXT = "TEXT"
+    ORDER = "ORDER"
+    CHECK = "CHECK"
+```
+
+## Question Base Structure
+
+All questions share a common base structure (classquiz/db/models.py:146):
+
+```python
+class QuizQuestion(BaseModel):
+    question: str  # Question text (supports HTML)
+    time: str  # Time limit in seconds (e.g., "20")
+    type: None | QuizQuestionType = QuizQuestionType.ABCD
+    answers: list[ABCDQuizAnswer] | RangeQuizAnswer | list[TextQuizAnswer] | list[VotingQuizAnswer] | str
+    image: str | None = None  # Optional question image URL
+    hide_results: bool | None = False  # Hide correct answer after question
+```
+
+<Info>
+The `answers` field is polymorphic - its structure varies based on the question type.
+</Info>
+
+## 1. ABCD (Multiple Choice)
+
+### Description
+
+Traditional multiple choice questions with one or more correct answers. The most common question type for quizzes.
+
+### Answer Structure
+
+```python
+class ABCDQuizAnswer(BaseModel):
+    right: bool  # Whether this answer is correct
+    answer: str  # Answer text (supports HTML)
+    color: str | None = None  # Optional custom color (hex)
+```
+
+### Example
+
+```json
+{
+  "question": "What is the capital of France?",
+  "time": "20",
+  "type": "ABCD",
+  "image": null,
+  "answers": [
+    {"right": false, "answer": "London", "color": "#FF0000"},
+    {"right": true, "answer": "Paris", "color": "#00FF00"},
+    {"right": false, "answer": "Berlin", "color": "#0000FF"},
+    {"right": false, "answer": "Madrid", "color": "#FFFF00"}
+  ]
+}
+```
+
+### Validation
+
+The system validates that ABCD questions have ABCDQuizAnswer format (classquiz/db/models.py:156):
+
+```python
+if info.data["type"] == QuizQuestionType.ABCD and not isinstance(v[0], ABCDQuizAnswer):
+    raise ValueError("Answers can't be none if type is ABCD")
+```
+
+<Accordion title="Color Customization">
+You can assign custom colors to each answer option using hex color codes. Colors are sanitized during save to prevent XSS:
+
+```python
+if answer.color is not None:
+    quiz_input.questions[i].answers[i2].color = bleach.clean(answer.color, tags=[], strip=True)
+```
+</Accordion>
+
+## 2. RANGE (Numeric Range)
+
+### Description
+
+Asks players to guess a number within a range. Great for estimation questions.
+
+### Answer Structure
+
+```python
+class RangeQuizAnswer(BaseModel):
+    min: int  # Minimum value of the range
+    max: int  # Maximum value of the range
+    min_correct: int  # Lower bound of correct range
+    max_correct: int  # Upper bound of correct range
+```
+
+### Example
+
+```json
+{
+  "question": "How many countries are in the European Union?",
+  "time": "30",
+  "type": "RANGE",
+  "image": null,
+  "answers": {
+    "min": 0,
+    "max": 50,
+    "min_correct": 26,
+    "max_correct": 28
+  }
+}
+```
+
+### Behavior
+
+- Players see a slider or input to select a number between `min` and `max`
+- Answer is correct if between `min_correct` and `max_correct` (inclusive)
+- Useful for:
+  - Population estimates
+  - Date ranges
+  - Measurement approximations
+  - Statistical guessing
+
+<Note>
+RANGE type questions are excluded from answer randomization since the slider/range has a fixed order.
+</Note>
+
+## 3. VOTING (Opinion Poll)
+
+### Description
+
+No correct answer - used for polls and opinion gathering. All answers are equally valid.
+
+### Answer Structure
+
+```python
+class VotingQuizAnswer(BaseModel):
+    answer: str  # Option text
+    image: str | None = None  # Optional image for this option
+    color: str | None = None  # Optional color
+```
+
+### Example
+
+```json
+{
+  "question": "What's your favorite programming language?",
+  "time": "15",
+  "type": "VOTING",
+  "image": null,
+  "answers": [
+    {"answer": "Python", "image": null, "color": "#3776AB"},
+    {"answer": "JavaScript", "image": null, "color": "#F7DF1E"},
+    {"answer": "Rust", "image": null, "color": "#000000"},
+    {"answer": "Go", "image": null, "color": "#00ADD8"}
+  ]
+}
+```
+
+### Special Features
+
+**Live Results API**: You can get real-time voting results (classquiz/routers/live.py:259):
+
+```python
+@router.get("/voting")
+async def voting_results(game_pin: str, api_key: str):
+    # Returns distribution like:
+    # {"Option A": 15, "Option B": 8, "Option C": 22}
+```
+
+**Use Cases**:
+- Class opinion polls
+- Preference surveys
+- Icebreaker questions
+- Feedback collection
+- Engagement checks
+
+<Info>
+Voting questions don't affect player scores since there's no "correct" answer.
+</Info>
+
+## 4. TEXT (Text Input)
+
+### Description
+
+Players type in their answer. Supports multiple acceptable answers and case sensitivity options.
+
+### Answer Structure
+
+```python
+class TextQuizAnswer(BaseModel):
+    answer: str  # Acceptable answer
+    case_sensitive: bool  # Whether matching is case-sensitive
+```
+
+### Example
+
+```json
+{
+  "question": "What is the chemical symbol for water?",
+  "time": "20",
+  "type": "TEXT",
+  "image": null,
+  "answers": [
+    {"answer": "H2O", "case_sensitive": false},
+    {"answer": "H₂O", "case_sensitive": false}
+  ]
+}
+```
+
+### Multiple Acceptable Answers
+
+You can specify multiple correct answers:
+
+```json
+"answers": [
+  {"answer": "USA", "case_sensitive": false},
+  {"answer": "United States", "case_sensitive": false},
+  {"answer": "United States of America", "case_sensitive": false},
+  {"answer": "US", "case_sensitive": false}
+]
+```
+
+The player's answer is correct if it matches ANY of the acceptable answers.
+
+### Case Sensitivity
+
+<Tabs>
+  <Tab title="Case Insensitive (case_sensitive: false)">
+    - "paris", "Paris", "PARIS" all match
+    - Recommended for most questions
+    - More forgiving for players
+  </Tab>
+  
+  <Tab title="Case Sensitive (case_sensitive: true)">
+    - "Paris" does NOT match "paris"
+    - Useful for:
+      - Proper nouns
+      - Code/programming questions
+      - Chemistry formulas
+      - Acronyms
+  </Tab>
+</Tabs>
+
+## 5. SLIDE (Information Slide)
+
+### Description
+
+Not a question - displays information to players without requiring an answer. Useful for:
+- Instructions
+- Context/background information
+- Breaks between sections
+- Fun facts
+
+### Answer Structure
+
+```python
+if info.data["type"] == QuizQuestionType.SLIDE and not isinstance(v, str):
+    raise ValueError("Answer must be from type SlideElement if type is SLIDE")
+```
+
+Slides use a string for the answers field (classquiz/db/models.py:166).
+
+### Example
+
+```json
+{
+  "question": "<h2>Fun Fact!</h2><p>Honey never spoils. Archaeologists have found 3000-year-old honey that's still edible.</p>",
+  "time": "10",
+  "type": "SLIDE",
+  "image": "https://example.com/honey.jpg",
+  "answers": ""
+}
+```
+
+<Note>
+SLIDE type questions are excluded from answer randomization and don't contribute to player scoring.
+</Note>
+
+## 6. ORDER (Ordering)
+
+### Description
+
+Players must arrange items in the correct order. Uses the same answer structure as VOTING.
+
+### Answer Structure
+
+```python
+class OrderQuizAnswer(BaseModel):
+    answer: str
+    color: str | None = None
+    id: int | None = None  # Position in correct order
+```
+
+Validation (classquiz/db/models.py:164):
+```python
+if info.data["type"] == QuizQuestionType.ORDER and not isinstance(v[0], VotingQuizAnswer):
+    raise ValueError("Answer must be from type VotingQuizAnswer if type is ORDER")
+```
+
+### Example
+
+```json
+{
+  "question": "Order these planets from closest to farthest from the Sun:",
+  "time": "30",
+  "type": "ORDER",
+  "answers": [
+    {"answer": "Mercury", "color": null},
+    {"answer": "Venus", "color": null},
+    {"answer": "Earth", "color": null},
+    {"answer": "Mars", "color": null}
+  ]
+}
+```
+
+### Use Cases
+
+- Historical timeline events
+- Process steps
+- Size/magnitude comparisons
+- Chronological ordering
+- Priority ranking
+
+## 7. CHECK (Multiple Correct Answers)
+
+### Description
+
+Like ABCD, but players can select multiple answers. Multiple answers can be marked as correct.
+
+### Answer Structure
+
+Uses the same structure as ABCD:
+
+```python
+if info.data["type"] == QuizQuestionType.CHECK and not isinstance(v[0], ABCDQuizAnswer):
+    raise ValueError("Answers can't be none if type is CHECK")
+```
+
+### Example
+
+```json
+{
+  "question": "Which of these are programming languages?",
+  "time": "25",
+  "type": "CHECK",
+  "answers": [
+    {"right": true, "answer": "Python", "color": null},
+    {"right": false, "answer": "HTML", "color": null},
+    {"right": true, "answer": "Java", "color": null},
+    {"right": true, "answer": "C++", "color": null},
+    {"right": false, "answer": "CSS", "color": null}
+  ]
+}
+```
+
+### Difference from ABCD
+
+<CardGroup cols={2}>
+  <Card title="ABCD">
+    - Single answer selection
+    - Radio buttons UI
+    - One correct answer (typically)
+  </Card>
+  
+  <Card title="CHECK">
+    - Multiple answer selection
+    - Checkboxes UI
+    - Multiple correct answers
+    - All correct selections needed to be fully correct
+  </Card>
+</CardGroup>
+
+## Question Settings
+
+### Time Limits
+
+All questions have a `time` field specifying seconds:
+
+```json
+"time": "20"  // 20 seconds to answer
+```
+
+Typical ranges:
+- Quick recall: 10-15 seconds
+- Standard: 20-30 seconds
+- Complex/reading: 45-60 seconds
+- SLIDE type: 5-10 seconds (just display time)
+
+### Hide Results
+
+Control whether correct answer is shown after question:
+
+```json
+"hide_results": false  // Show correct answer (default)
+"hide_results": true   // Don't show correct answer
+```
+
+Useful for:
+- Building suspense
+- Preventing answer sharing in multi-session games
+- Discussion-based learning
+
+### Images
+
+All question types support an optional image:
+
+```json
+"image": "https://example.com/question-image.jpg"
+```
+
+Supported formats: `.gif`, `.jpg`, `.jpeg`, `.png`, `.svg`, `.webp`, `.jfif`
+
+## Answer Validation & Sanitization
+
+During save, all answer content is sanitized (classquiz/routers/editor.py:93):
+
+```python
+for i, question in enumerate(quiz_input.questions):
+    if question.type == QuizQuestionType.ABCD or question.type == QuizQuestionType.VOTING:
+        for i2, answer in enumerate(question.answers):
+            # Sanitize color
+            if answer.color is not None:
+                quiz_input.questions[i].answers[i2].color = bleach.clean(
+                    answer.color, tags=[], strip=True
+                )
+            # Handle empty answers
+            if answer.answer == "":
+                quiz_input.questions[i].answers[i2].answer = None
+            # Sanitize answer text
+            if answer.answer is not None:
+                quiz_input.questions[i].answers[i2].answer = html.unescape(
+                    bleach.clean(answer.answer, tags=ALLOWED_TAGS_FOR_QUIZ, strip=True)
+                )
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Mix Question Types" icon="shuffle">
+    Use variety to keep players engaged and test different skills
+  </Card>
+  
+  <Card title="Appropriate Time Limits" icon="clock">
+    Give enough time to read and think, but keep pace engaging
+  </Card>
+  
+  <Card title="Clear Question Text" icon="message">
+    Be specific and unambiguous in your wording
+  </Card>
+  
+  <Card title="Test Your Quiz" icon="flask">
+    Play through once to verify all answers and timings work well
+  </Card>
+</CardGroup>
+
+<Accordion title="Question Type Selection Guide">
+  **Choose the right type for your content:**
+  
+  - **ABCD**: Facts, definitions, single correct answer
+  - **CHECK**: Multiple valid answers, categorization
+  - **RANGE**: Estimation, approximation, numeric guessing
+  - **TEXT**: Recall, spelling, open-ended (with expected answers)
+  - **VOTING**: Opinions, preferences, no wrong answer
+  - **ORDER**: Sequences, timelines, rankings
+  - **SLIDE**: Context, instructions, breaks
+</Accordion>

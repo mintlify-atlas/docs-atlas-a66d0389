@@ -1,0 +1,540 @@
+---
+title: External Services Configuration
+description: Configure PostgreSQL, Redis, Meilisearch, hCaptcha, and other external dependencies
+---
+
+ClassQuiz relies on several external services to function properly. This guide covers the configuration for PostgreSQL, Redis, Meilisearch, hCaptcha/reCAPTCHA, and optional services like Pixabay.
+
+## PostgreSQL Database
+
+ClassQuiz uses PostgreSQL as its primary database for storing users, quizzes, sessions, and all application data.
+
+<ParamField path="DB_URL" type="string" required>
+  PostgreSQL connection URL in the format:
+  
+  `postgresql://username:password@host:port/database`
+  
+  **Docker default:** `postgresql://postgres:classquiz@db:5432/classquiz`
+  
+  **Standalone example:** `postgresql://postgres:mysecretpassword@localhost:5432/classquiz`
+</ParamField>
+
+### PostgreSQL Setup
+
+<Tabs>
+  <Tab title="Docker Compose">
+    PostgreSQL is included in the Docker Compose setup:
+    
+    ```yaml docker-compose.yml
+    db:
+      image: postgres:14-alpine
+      restart: always
+      environment:
+        POSTGRES_PASSWORD: "classquiz"
+        POSTGRES_DB: "classquiz"
+      volumes:
+        - data:/var/lib/postgresql/data
+    ```
+    
+    The connection URL is pre-configured:
+    ```bash
+    DB_URL=postgresql://postgres:classquiz@db:5432/classquiz
+    ```
+    
+    <Warning>Do not change the DB_URL in Docker deployments unless you modify the database service configuration</Warning>
+  </Tab>
+  
+  <Tab title="Standalone">
+    <Steps>
+      <Step title="Install PostgreSQL">
+        Install PostgreSQL 12 or later:
+        ```bash
+        # Ubuntu/Debian
+        sudo apt-get install postgresql postgresql-contrib
+        
+        # macOS
+        brew install postgresql
+        ```
+      </Step>
+      
+      <Step title="Create database">
+        ```bash
+        sudo -u postgres psql
+        CREATE DATABASE classquiz;
+        CREATE USER classquiz_user WITH PASSWORD 'secure-password';
+        GRANT ALL PRIVILEGES ON DATABASE classquiz TO classquiz_user;
+        ```
+      </Step>
+      
+      <Step title="Configure connection">
+        ```bash
+        DB_URL=postgresql://classquiz_user:secure-password@localhost:5432/classquiz
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Redis Cache
+
+Redis is used for caching, session management, OAuth state storage, and background job queues.
+
+<ParamField path="REDIS" type="string" required>
+  Redis connection URL in the format:
+  
+  `redis://host:port/db?decode_responses=True`
+  
+  **Docker default:** `redis://redis:6379/0?decode_responses=True`
+  
+  **Standalone example:** `redis://localhost:6379/0?decode_responses=True`
+  
+  <Note>The `decode_responses=True` parameter is required for proper string handling</Note>
+</ParamField>
+
+<ParamField path="CACHE_EXPIRY" type="integer" default="86400">
+  Default cache expiration time in seconds.
+  
+  **Default:** 86400 seconds (24 hours)
+</ParamField>
+
+### Redis Setup
+
+<Tabs>
+  <Tab title="Docker Compose">
+    Redis is included in the Docker Compose setup:
+    
+    ```yaml docker-compose.yml
+    redis:
+      image: redis:alpine
+      restart: always
+      healthcheck:
+        test: ["CMD", "redis-cli", "ping"]
+    ```
+    
+    Connection is pre-configured:
+    ```bash
+    REDIS=redis://redis:6379/0?decode_responses=True
+    ```
+  </Tab>
+  
+  <Tab title="Standalone">
+    <Steps>
+      <Step title="Install Redis">
+        ```bash
+        # Ubuntu/Debian
+        sudo apt-get install redis-server
+        
+        # macOS
+        brew install redis
+        ```
+      </Step>
+      
+      <Step title="Start Redis">
+        ```bash
+        # Ubuntu/Debian
+        sudo systemctl start redis
+        
+        # macOS
+        brew services start redis
+        ```
+      </Step>
+      
+      <Step title="Configure connection">
+        ```bash
+        REDIS=redis://localhost:6379/0?decode_responses=True
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Meilisearch
+
+Meilisearch provides fast, typo-tolerant search functionality for quizzes.
+
+<ParamField path="MEILISEARCH_URL" type="string" required>
+  URL of your Meilisearch instance.
+  
+  **Docker default:** `http://meilisearch:7700`
+  
+  **Standalone default:** `http://127.0.0.1:7700`
+</ParamField>
+
+<ParamField path="MEILISEARCH_INDEX" type="string" default="classquiz">
+  Name of the Meilisearch index used for storing quiz search data.
+</ParamField>
+
+### Meilisearch Setup
+
+<Tabs>
+  <Tab title="Docker Compose">
+    Meilisearch is included in the Docker Compose setup:
+    
+    ```yaml docker-compose.yml
+    meilisearch:
+      image: getmeili/meilisearch:v0.28.0
+      restart: always
+      environment:
+        MEILI_NO_ANALYTICS: "true"
+      volumes:
+        - meilisearch-data:/data.ms
+    ```
+    
+    Configuration:
+    ```bash
+    MEILISEARCH_URL=http://meilisearch:7700
+    MEILISEARCH_INDEX=classquiz
+    ```
+  </Tab>
+  
+  <Tab title="Standalone">
+    <Steps>
+      <Step title="Install Meilisearch">
+        ```bash
+        # Download and install
+        curl -L https://install.meilisearch.com | sh
+        
+        # Or use Docker
+        docker run -d -p 7700:7700 \
+          -v $(pwd)/meili_data:/meili_data \
+          getmeili/meilisearch:v0.28.0
+        ```
+      </Step>
+      
+      <Step title="Start Meilisearch">
+        ```bash
+        ./meilisearch
+        ```
+      </Step>
+      
+      <Step title="Configure connection">
+        ```bash
+        MEILISEARCH_URL=http://127.0.0.1:7700
+        MEILISEARCH_INDEX=classquiz
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+<Note>
+  Meilisearch indexes are automatically created and configured by ClassQuiz on first use.
+</Note>
+
+## Captcha Services
+
+Protect registration and login forms from bots using hCaptcha or Google reCAPTCHA.
+
+<ParamField path="HCAPTCHA_KEY" type="string" optional>
+  hCaptcha secret key for server-side verification.
+  
+  Get your key from: [hCaptcha Dashboard](https://dashboard.hcaptcha.com/)
+</ParamField>
+
+<ParamField path="RECAPTCHA_KEY" type="string" optional>
+  Google reCAPTCHA secret key for server-side verification.
+  
+  Get your key from: [reCAPTCHA Admin Console](https://www.google.com/recaptcha/admin)
+</ParamField>
+
+<Note>
+  Both captcha services are optional. If neither is configured, captcha verification will be skipped.
+</Note>
+
+### hCaptcha Setup
+
+<Steps>
+  <Step title="Create hCaptcha account">
+    Sign up at [hCaptcha.com](https://www.hcaptcha.com/)
+  </Step>
+  
+  <Step title="Add your site">
+    1. Go to [Sites](https://dashboard.hcaptcha.com/sites)
+    2. Add a new site with your domain
+    3. Copy the Secret Key
+  </Step>
+  
+  <Step title="Configure ClassQuiz">
+    ```bash
+    HCAPTCHA_KEY=your-secret-key-here
+    ```
+  </Step>
+</Steps>
+
+### reCAPTCHA Setup
+
+<Steps>
+  <Step title="Register your site">
+    Go to [reCAPTCHA Admin](https://www.google.com/recaptcha/admin/create)
+  </Step>
+  
+  <Step title="Configure reCAPTCHA">
+    1. Choose reCAPTCHA v2 ("I'm not a robot" checkbox)
+    2. Add your domain
+    3. Accept terms and submit
+    4. Copy the Secret Key
+  </Step>
+  
+  <Step title="Configure ClassQuiz">
+    ```bash
+    RECAPTCHA_KEY=your-secret-key-here
+    ```
+  </Step>
+</Steps>
+
+## Optional Services
+
+### Pixabay API
+
+Integrate Pixabay image search into the quiz editor.
+
+<ParamField path="PIXABAY_API_KEY" type="string" optional>
+  API key for Pixabay integration.
+  
+  Get your key from: [Pixabay API Documentation](https://pixabay.com/api/docs/)
+</ParamField>
+
+<Steps>
+  <Step title="Create Pixabay account">
+    Sign up at [Pixabay.com](https://pixabay.com/accounts/register/)
+  </Step>
+  
+  <Step title="Get API key">
+    Navigate to [API Documentation](https://pixabay.com/api/docs/) and find your API key
+  </Step>
+  
+  <Step title="Configure ClassQuiz">
+    ```bash
+    PIXABAY_API_KEY=your-api-key-here
+    ```
+  </Step>
+</Steps>
+
+### Mapbox (Not Currently Used)
+
+Mapbox configuration is present in the codebase but not actively used in the current version.
+
+## Complete External Services Configuration
+
+<CodeGroup>
+```bash Docker Compose
+# Database
+DB_URL=postgresql://postgres:classquiz@db:5432/classquiz
+
+# Redis
+REDIS=redis://redis:6379/0?decode_responses=True
+CACHE_EXPIRY=86400
+
+# Meilisearch
+MEILISEARCH_URL=http://meilisearch:7700
+MEILISEARCH_INDEX=classquiz
+
+# Captcha (optional)
+HCAPTCHA_KEY=your-hcaptcha-secret
+# RECAPTCHA_KEY=your-recaptcha-secret
+
+# Optional services
+PIXABAY_API_KEY=your-pixabay-key
+```
+
+```bash Standalone
+# Database
+DB_URL=postgresql://classquiz_user:password@localhost:5432/classquiz
+
+# Redis
+REDIS=redis://localhost:6379/0?decode_responses=True
+CACHE_EXPIRY=86400
+
+# Meilisearch
+MEILISEARCH_URL=http://127.0.0.1:7700
+MEILISEARCH_INDEX=classquiz
+
+# Captcha
+HCAPTCHA_KEY=your-hcaptcha-secret
+
+# Optional
+PIXABAY_API_KEY=your-pixabay-key
+```
+
+```bash Production
+# Database (with connection pooling)
+DB_URL=postgresql://classquiz:secure-password@postgres.example.com:5432/classquiz?pool_size=20
+
+# Redis (with authentication)
+REDIS=redis://:redis-password@redis.example.com:6379/0?decode_responses=True
+CACHE_EXPIRY=3600
+
+# Meilisearch (with master key)
+MEILISEARCH_URL=https://meilisearch.example.com
+MEILISEARCH_INDEX=classquiz-production
+
+# Captcha
+HCAPTCHA_KEY=your-production-hcaptcha-key
+
+# Optional services
+PIXABAY_API_KEY=your-pixabay-key
+SENTRY_DSN=https://public@sentry.io/project-id
+```
+</CodeGroup>
+
+## Health Checks
+
+Verify that external services are running correctly:
+
+<Tabs>
+  <Tab title="PostgreSQL">
+    ```bash
+    # Test connection
+    psql postgresql://postgres:classquiz@localhost:5432/classquiz -c "SELECT 1;"
+    
+    # Check if database exists
+    psql -U postgres -lqt | cut -d \| -f 1 | grep -qw classquiz
+    ```
+  </Tab>
+  
+  <Tab title="Redis">
+    ```bash
+    # Test connection
+    redis-cli ping
+    
+    # Check info
+    redis-cli INFO server
+    ```
+  </Tab>
+  
+  <Tab title="Meilisearch">
+    ```bash
+    # Check health
+    curl http://localhost:7700/health
+    
+    # List indexes
+    curl http://localhost:7700/indexes
+    ```
+  </Tab>
+  
+  <Tab title="Docker Services">
+    ```bash
+    # Check all service health
+    docker-compose ps
+    
+    # View logs
+    docker-compose logs db
+    docker-compose logs redis
+    docker-compose logs meilisearch
+    ```
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Database connection refused">
+    Check that:
+    - PostgreSQL is running: `systemctl status postgresql`
+    - Port 5432 is not blocked by firewall
+    - Connection URL is correct (host, port, username, password)
+    - Database exists: `psql -U postgres -l`
+    
+    Test connection:
+    ```bash
+    psql postgresql://username:password@host:port/database
+    ```
+  </Accordion>
+  
+  <Accordion title="Redis connection failed">
+    Verify:
+    - Redis is running: `redis-cli ping`
+    - Redis is listening on correct port: `netstat -tlnp | grep 6379`
+    - No authentication is required (or correct password is provided)
+    - `decode_responses=True` parameter is present in the URL
+  </Accordion>
+  
+  <Accordion title="Meilisearch not indexing">
+    Common issues:
+    - Meilisearch service not running
+    - Incorrect MEILISEARCH_URL
+    - Network connectivity issues
+    - Disk space full (check Meilisearch data directory)
+    
+    Check Meilisearch logs:
+    ```bash
+    docker-compose logs meilisearch
+    ```
+  </Accordion>
+  
+  <Accordion title="Captcha verification failing">
+    Verify:
+    - You're using the Secret Key (not Site Key) in HCAPTCHA_KEY/RECAPTCHA_KEY
+    - Your domain is registered in the captcha service dashboard
+    - Client-side captcha is correctly implemented with the Site Key
+    - No network issues preventing server-side verification
+  </Accordion>
+</AccordionGroup>
+
+## Performance Tuning
+
+### PostgreSQL
+
+```sql
+-- Increase shared buffers (recommended: 25% of RAM)
+ALTER SYSTEM SET shared_buffers = '256MB';
+
+-- Enable query planning cache
+ALTER SYSTEM SET plan_cache_mode = 'auto';
+
+-- Increase worker processes
+ALTER SYSTEM SET max_worker_processes = 4;
+```
+
+### Redis
+
+```conf
+# redis.conf
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+save ""  # Disable persistence for pure cache
+```
+
+### Meilisearch
+
+For large datasets, consider:
+- Increasing memory allocation
+- Using dedicated Meilisearch server
+- Configuring custom ranking rules
+- Setting up replica for high availability
+
+## Security Best Practices
+
+<Warning>
+  Never expose database or Redis ports directly to the internet. Use firewall rules and VPCs to restrict access.
+</Warning>
+
+- Use strong passwords for PostgreSQL and Redis
+- Enable SSL/TLS for database connections in production
+- Regularly backup PostgreSQL data
+- Implement Redis authentication with `requirepass`
+- Use Meilisearch master keys in production
+- Rotate API keys periodically
+- Monitor service logs for suspicious activity
+
+## Monitoring
+
+Consider implementing monitoring for:
+- Database query performance (pg_stat_statements)
+- Redis memory usage and hit rates
+- Meilisearch index size and search latency
+- Connection pool utilization
+- Error rates and response times
+
+Tools: Prometheus, Grafana, pgAdmin, RedisInsight
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="gear" href="/configuration/environment-variables">
+    Complete environment variable reference
+  </Card>
+  <Card title="Storage Configuration" icon="database" href="/configuration/storage">
+    Configure file storage backends
+  </Card>
+</CardGroup>

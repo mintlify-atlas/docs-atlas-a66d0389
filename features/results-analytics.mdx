@@ -1,0 +1,450 @@
+---
+title: Results & Analytics
+description: View, analyze, and export quiz results with ClassQuiz's comprehensive analytics features
+---
+
+## Overview
+
+ClassQuiz provides detailed results tracking and analytics for all your live game sessions. Results are stored permanently in the database and include player performance, answer data, and custom field information.
+
+## Results Storage
+
+### GameResults Model
+
+All game results are stored in the `GameResults` model (classquiz/db/models.py:366):
+
+```python
+class GameResults(ormar.Model):
+    id: uuid.UUID  # Unique result ID
+    quiz: uuid.UUID | Quiz  # Reference to original quiz
+    user: uuid.UUID | User  # Quiz owner/game host
+    timestamp: datetime  # When game was played
+    player_count: int  # Number of participants
+    note: str | None  # Optional notes about the session
+    answers: Json[list[AnswerData]]  # All answer submissions
+    player_scores: Json[dict[str, str]]  # Final scores by player
+    custom_field_data: Json[dict[str, str]] | None  # Custom field responses
+    title: str  # Quiz title (snapshot)
+    description: str  # Quiz description (snapshot)
+    questions: Json[list[QuizQuestion]]  # Questions (snapshot)
+```
+
+<Info>
+Results include a snapshot of the quiz (title, description, questions) at the time it was played. This means you can edit the original quiz without affecting historical results.
+</Info>
+
+## Viewing Results
+
+### List All Results
+
+View all your game results ordered by most recent (classquiz/routers/results.py:17):
+
+```http
+GET /api/v1/results/list
+```
+
+```python
+@router.get("/list")
+async def list_game_results(
+    user: User = Depends(get_current_user),
+) -> list[GameResults]:
+    results = (
+        await GameResults.objects.select_related(GameResults.quiz)
+        .order_by(GameResults.timestamp.desc())
+        .all(user=user.id)
+    )
+    return results
+```
+
+Results are displayed in the dashboard at `/results`.
+
+### Results by Quiz
+
+Get all results for a specific quiz (classquiz/routers/results.py:29):
+
+```http
+GET /api/v1/results/list/{quiz_id}
+```
+
+```python
+@router.get("/list/{quiz_id}")
+async def get_results_by_quiz(
+    quiz_id: UUID, 
+    user: User = Depends(get_current_user)
+) -> list[GameResults]:
+    res = await GameResults.objects.all(user=user.id, quiz=quiz_id)
+    if res is None:
+        raise HTTPException(status_code=404, detail="Game Result not found")
+    return res
+```
+
+This allows tracking performance across multiple sessions of the same quiz.
+
+### Individual Result Details
+
+Get detailed data for a specific game session (classquiz/routers/results.py:38):
+
+```http
+GET /api/v1/results/{game_id}
+```
+
+```python
+@router.get("/{game_id}")
+async def get_game_result(
+    game_id: UUID, 
+    user: User = Depends(get_current_user)
+) -> GameResults:
+    res = await GameResults.objects.select_related(GameResults.quiz)
+           .get_or_none(user=user.id, id=game_id)
+    if res is None:
+        raise HTTPException(status_code=404, detail="Game Result not found")
+    return res
+```
+
+## Answer Data Structure
+
+### Individual Answer
+
+Each answer submission is stored with full details (classquiz/db/models.py:319):
+
+```python
+class AnswerData(BaseModel):
+    username: str  # Player who submitted
+    answer: str  # Answer they gave
+    right: bool  # Whether it was correct
+    time_taken: float  # Milliseconds to answer
+    score: int  # Points awarded for this answer
+```
+
+### Example Answer Data
+
+```json
+{
+  "username": "Alice",
+  "answer": "Paris",
+  "right": true,
+  "time_taken": 3542.5,
+  "score": 850
+}
+```
+
+### Answers Array
+
+All answers for all questions are stored in the `answers` field:
+
+```json
+[
+  {"username": "Alice", "answer": "Paris", "right": true, "time_taken": 3542.5, "score": 850},
+  {"username": "Bob", "answer": "London", "right": false, "time_taken": 2103.2, "score": 0},
+  {"username": "Charlie", "answer": "Paris", "right": true, "time_taken": 5621.8, "score": 720}
+]
+```
+
+## Results Dashboard
+
+The results page (frontend/src/routes/results/[result_id]/+page.svelte) provides three main views:
+
+<Tabs>
+  <Tab title="General Overview">
+    **General Overview Tab** (general_overview.svelte)
+    
+    Displays:
+    - Total players
+    - Average score
+    - Quiz metadata (title, description)
+    - Timestamp of game
+    - Custom field summary
+    - Notes field
+  </Tab>
+  
+  <Tab title="Player Overview">
+    **Player Overview Tab** (player_overview.svelte)
+    
+    Shows:
+    - Complete player leaderboard
+    - Final scores
+    - Answer accuracy per player
+    - Individual player performance
+    - Custom field data per player
+  </Tab>
+  
+  <Tab title="Question Overview">
+    **Question Overview Tab** (question_overview.svelte)
+    
+    Analyzes:
+    - Per-question statistics
+    - Answer distribution
+    - Correct vs incorrect percentages
+    - Average time to answer
+    - Most missed questions
+  </Tab>
+</Tabs>
+
+## Player Scores
+
+Final player scores are stored as a dictionary:
+
+```json
+{
+  "Alice": "3450",
+  "Bob": "2180",
+  "Charlie": "2890",
+  "Diana": "3210"
+}
+```
+
+Scores are calculated based on:
+- Correctness (must be correct to score)
+- Speed (faster = more points)
+- Question difficulty/time limit
+
+## Custom Field Data
+
+If you collected custom field data (e.g., Student ID, Class), it's stored with results:
+
+```json
+{
+  "Alice": "12345",
+  "Bob": "12346",
+  "Charlie": "12347"
+}
+```
+
+This allows you to:
+- Track performance by class/group
+- Export for grade books
+- Correlate with external systems
+- Generate reports by cohort
+
+## Adding Notes
+
+You can add notes to any result session (classquiz/routers/results.py:51):
+
+```http
+POST /api/v1/results/set_note?id={result_id}
+```
+
+```python
+@router.post("/set_note")
+async def set_note(
+    id: UUID, 
+    data: _SetNoteInput, 
+    user: User = Depends(get_current_user)
+) -> GameResults:
+    res = await GameResults.objects.get_or_none(user=user.id, id=id)
+    if res is None:
+        raise HTTPException(status_code=404, detail="Game Result not found")
+    res.note = data.note
+    return await res.update()
+```
+
+**Use notes for:**
+- Recording class/session context
+- Noting technical issues during game
+- Marking practice vs graded sessions
+- Special circumstances or observations
+
+## Exporting Results
+
+### Excel/Spreadsheet Export
+
+During or after a game, you can export results to Excel (classquiz/routers/quiz.py:224):
+
+```http
+GET /api/v1/quiz/export_data/{export_token}?game_pin={pin}
+```
+
+```python
+@router.get("/export_data/{export_token}", response_class=StreamingResponse)
+async def export_quiz_answers(export_token: str, game_pin: str):
+    # Generates Excel spreadsheet with:
+    # - Player names
+    # - Scores
+    # - Individual question responses
+    # - Custom field data
+    # - Timestamps
+    
+    spreadsheet = await generate_spreadsheet(
+        quiz=quiz, 
+        quiz_results=data, 
+        player_fields=player_fields, 
+        player_scores=score_data
+    )
+    
+    return StreamingResponse(
+        iter_file(),
+        media_type="application/vnd.ms-excel",
+        headers={
+            "Content-Disposition": f"attachment;filename=ClassQuiz-{quiz.title}-{date}.xlsx"
+        }
+    )
+```
+
+### Export Contents
+
+The Excel export includes:
+
+<CardGroup cols={2}>
+  <Card title="Player Sheet" icon="users">
+    - Username
+    - Total score
+    - Custom field value
+    - Correct/incorrect count
+  </Card>
+  
+  <Card title="Question Sheets" icon="list">
+    - Per-question tab
+    - All answers submitted
+    - Correctness
+    - Time taken
+    - Individual scores
+  </Card>
+  
+  <Card title="Summary Sheet" icon="chart-bar">
+    - Overall statistics
+    - Average scores
+    - Question difficulty
+    - Participation rate
+  </Card>
+  
+  <Card title="Custom Fields" icon="input-text">
+    - All collected custom data
+    - Organized by player
+    - Ready for import to grade books
+  </Card>
+</CardGroup>
+
+<Note>
+Export tokens expire after use for security. Generate a new token for each export.
+</Note>
+
+## Analytics Insights
+
+### Question Difficulty Analysis
+
+By analyzing answer data across multiple sessions:
+
+```python
+# Questions with low success rates
+difficult_questions = [
+    q for q in questions 
+    if success_rate(q) < 0.5
+]
+
+# Questions answered very quickly
+easy_questions = [
+    q for q in questions
+    if avg_time(q) < time_limit(q) * 0.3
+]
+```
+
+### Performance Tracking
+
+Compare results across multiple sessions:
+- Track improvement over time
+- Identify consistently difficult topics
+- Monitor individual student progress
+- Evaluate quiz quality
+
+### Answer Distribution
+
+For VOTING type questions, analyze opinion distributions:
+
+```python
+answer_counts = {}
+for answer in answers:
+    answer_counts[answer.answer] = answer_counts.get(answer.answer, 0) + 1
+```
+
+## Results Data Access
+
+### Via Dashboard
+
+1. Navigate to `/results` or `/dashboard`
+2. Click on a quiz to see all sessions
+3. Click on a session to see detailed results
+4. Switch between tabs for different views
+5. Export data using export button
+
+### Via API
+
+Programmatic access to results:
+
+```javascript
+// Get all results
+const results = await fetch('/api/v1/results/list', {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+
+// Get specific result
+const result = await fetch(`/api/v1/results/${gameId}`, {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+
+// Get results for a quiz
+const quizResults = await fetch(`/api/v1/results/list/${quizId}`, {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+```
+
+## Results Retention
+
+<Info>
+Results are stored permanently in the database until manually deleted. They are NOT affected by:
+- Editing the original quiz
+- Making the quiz private/public
+- Deleting the original quiz (results reference it but remain accessible)
+</Info>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Add Notes Immediately" icon="note-sticky">
+    Record context right after the game while details are fresh
+  </Card>
+  
+  <Card title="Export Regularly" icon="download">
+    Don't rely solely on the web interface - export important sessions
+  </Card>
+  
+  <Card title="Use Custom Fields" icon="id-card">
+    Collect student IDs or class names for easier result management
+  </Card>
+  
+  <Card title="Review Question Stats" icon="chart-line">
+    Identify questions that may need clarification or revision
+  </Card>
+</CardGroup>
+
+## Privacy Considerations
+
+- Results are only visible to the quiz owner (game host)
+- Player usernames are stored as entered (no email/personal data required)
+- Custom field data is optional and controlled by host
+- Results can be deleted if needed
+- Export files should be handled according to your privacy policy
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Results not appearing">
+    Results must be explicitly saved at the end of a game. Check that:
+    - Game was completed (not abandoned mid-session)
+    - Save results option was selected
+    - No errors occurred during save
+  </Accordion>
+  
+  <Accordion title="Missing player data">
+    Players who disconnect before game ends may not have complete data:
+    - Their answers up to disconnection are saved
+    - Final score may be incomplete
+    - Check timestamp data for partial sessions
+  </Accordion>
+  
+  <Accordion title="Export not downloading">
+    Export tokens are single-use and short-lived:
+    - Generate a fresh export token
+    - Don't refresh the page during download
+    - Check popup blockers
+  </Accordion>
+</AccordionGroup>

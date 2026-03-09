@@ -1,0 +1,516 @@
+---
+title: Community & Quiz Marketplace
+description: Discover, share, and rate quizzes in the ClassQuiz public community marketplace
+---
+
+## Overview
+
+ClassQuiz features a public quiz marketplace where users can discover quizzes created by others, share their own quizzes with the community, and rate quizzes they've tried. This creates a collaborative ecosystem of educational content.
+
+## Public vs Private Quizzes
+
+### Privacy Settings
+
+Every quiz has a `public` boolean field that determines visibility:
+
+```python
+class Quiz(ormar.Model):
+    public: bool = ormar.Boolean(default=False)  # Private by default
+```
+
+<CardGroup cols={2}>
+  <Card title="Private Quizzes" icon="lock">
+    **Default Setting**
+    
+    - Only visible to quiz creator
+    - Not searchable
+    - Not indexed in Meilisearch
+    - Can be used in live games
+    - Can be edited freely
+  </Card>
+  
+  <Card title="Public Quizzes" icon="globe">
+    **Community Shared**
+    
+    - Visible to all users
+    - Searchable in marketplace
+    - Indexed in Meilisearch
+    - Anyone can start games with them
+    - Can be rated by community
+    - Tracked with views, plays, likes
+  </Card>
+</CardGroup>
+
+## Making a Quiz Public
+
+When you set `public: true` in the editor:
+
+1. **Indexing**: Quiz is indexed in Meilisearch for search (classquiz/routers/editor.py:166)
+   ```python
+   if quiz_input.public:
+       meilisearch.index(settings.meilisearch_index).add_documents(
+           [await get_meili_data(quiz)]
+       )
+   ```
+
+2. **Visibility**: Quiz appears in `/explore` and search results
+
+3. **Analytics**: System starts tracking views, plays, likes, and dislikes
+
+4. **Rating**: Users can rate the quiz
+
+<Warning>
+Once public, anyone can play your quiz. Make sure it's polished and appropriate before publishing.
+</Warning>
+
+## Discovering Public Quizzes
+
+### Explore Page
+
+The explore page (`/explore`) displays all public quizzes using Meilisearch.
+
+Frontend implementation (frontend/src/routes/explore/+page.svelte):
+```svelte
+<div class="grid lg:grid-cols-3 grid-cols-1">
+  {#each quizzes.hits as quiz}
+    <SearchCard {quiz} />
+  {/each}
+</div>
+```
+
+Each quiz card shows:
+- Title and description
+- Cover image (if set)
+- Creator username
+- View count
+- Like/dislike ratio
+- Number of times played
+
+### Search Functionality
+
+Quizzes are searchable by:
+- Title
+- Description  
+- Creator name
+- Question content
+
+Search is powered by Meilisearch for fast, typo-tolerant results.
+
+### Getting Public Quiz Details
+
+Retrieve full details of a public quiz (classquiz/routers/quiz.py:66):
+
+```http
+GET /api/v1/quiz/get/public/{quiz_id}
+```
+
+```python
+@router.get("/get/public/{quiz_id}")
+async def get_public_quiz(quiz_id: uuid.UUID):
+    quiz = await Quiz.objects.select_related("user_id").get_or_none(id=quiz_id)
+    if quiz is None:
+        return JSONResponse(status_code=404, content={"detail": "quiz not found"})
+    
+    # Increment view count
+    quiz.views += 1
+    await quiz.update()
+    
+    return PublicQuizResponse(**quiz.model_dump())
+```
+
+<Info>
+Every time someone views a public quiz, the view count increments. This helps identify popular quizzes.
+</Info>
+
+## Quiz Analytics
+
+### Tracked Metrics
+
+Public quizzes track four key metrics (classquiz/db/models.py:197):
+
+```python
+class Quiz(ormar.Model):
+    likes: int = ormar.Integer(nullable=False, default=0, server_default="0")
+    dislikes: int = ormar.Integer(nullable=False, default=0, server_default="0")
+    plays: int = ormar.Integer(nullable=False, default=0, server_default="0")
+    views: int = ormar.Integer(nullable=False, default=0, server_default="0")
+```
+
+<Tabs>
+  <Tab title="Views">
+    **View Count**
+    
+    Incremented when:
+    - Someone opens the public quiz page
+    - API endpoint `/api/v1/quiz/get/public/{quiz_id}` is called
+    
+    Indicates browsing interest, not actual usage.
+  </Tab>
+  
+  <Tab title="Plays">
+    **Play Count**
+    
+    Incremented when:
+    - A game session is started with this quiz
+    - Called at `/api/v1/quiz/start/{quiz_id}`
+    
+    ```python
+    quiz.plays += 1
+    await quiz.update()
+    ```
+    
+    Indicates actual usage in live games.
+  </Tab>
+  
+  <Tab title="Likes">
+    **Like Count**
+    
+    Incremented when:
+    - User submits a positive rating
+    - See Rating System section below
+    
+    Indicates community approval.
+  </Tab>
+  
+  <Tab title="Dislikes">
+    **Dislike Count**
+    
+    Incremented when:
+    - User submits a negative rating
+    - See Rating System section below
+    
+    Helps identify problematic content.
+  </Tab>
+</Tabs>
+
+## Rating System
+
+### Rating a Quiz
+
+Users can rate any public quiz (classquiz/routers/community.py:60):
+
+```http
+POST /api/v1/community/rate/{quiz_id}
+```
+
+Request body:
+```json
+{
+  "type": "LIKE"  // or "DISLIKE"
+}
+```
+
+### Rating Model
+
+Ratings are stored in the database (classquiz/db/models.py:557):
+
+```python
+class Rating(ormar.Model):
+    id: uuid.UUID
+    user: uuid.UUID | User  # Who rated
+    positive: bool  # True = like, False = dislike
+    created_at: datetime
+    quiz: uuid.UUID | Quiz  # What was rated
+```
+
+### Rating Logic
+
+The rating endpoint handles multiple scenarios (classquiz/routers/community.py:61):
+
+```python
+@router.post("/rate/{quiz_id}")
+async def rate_quiz(
+    data: RateQuizInput, 
+    quiz_id: uuid.UUID, 
+    user: User = Depends(get_current_user)
+):
+    quiz = await Quiz.objects.get_or_none(id=quiz_id, public=True)
+    if quiz is None:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    
+    rating = await Rating.objects.get_or_none(quiz=quiz, user=user)
+    positive = True if data.type == RateQuizInputType.LIKE else False
+    
+    # Same rating already exists
+    if rating is not None and rating.positive == positive:
+        raise HTTPException(status_code=409, detail="Rating already submitted")
+    
+    # Changing rating (like -> dislike or vice versa)
+    elif rating is not None and rating.positive != positive:
+        await rating.delete()
+        if rating.positive:
+            quiz.likes -= 1
+        else:
+            quiz.dislikes -= 1
+    
+    # New rating
+    rating = Rating(
+        id=uuid.uuid4(),
+        user=user,
+        positive=positive,
+        quiz=quiz,
+        created_at=datetime.now(),
+    )
+    await rating.save()
+    
+    if positive:
+        quiz.likes += 1
+    else:
+        quiz.dislikes += 1
+    
+    await quiz.update()
+```
+
+<AccordionGroup>
+  <Accordion title="First-time rating">
+    User has never rated this quiz:
+    - Create new rating
+    - Increment likes or dislikes
+  </Accordion>
+  
+  <Accordion title="Duplicate rating">
+    User already submitted the same rating:
+    - Return 409 error
+    - No changes to counts
+  </Accordion>
+  
+  <Accordion title="Changing rating">
+    User switching from like to dislike or vice versa:
+    - Delete old rating
+    - Decrement old count
+    - Create new rating
+    - Increment new count
+  </Accordion>
+</AccordionGroup>
+
+## User Profiles
+
+### View User Profile
+
+Get basic user information (classquiz/routers/community.py:20):
+
+```http
+GET /api/v1/community/user/{user_id}
+```
+
+Returns:
+```json
+{
+  "username": "teacher123",
+  "created_at": "2023-05-15T10:30:00Z",
+  "id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+Only public fields are exposed (username, creation date, ID).
+
+### View User's Quizzes
+
+Get all public quizzes by a user (classquiz/routers/community.py:33):
+
+```http
+GET /api/v1/community/quizzes/{user_id}
+```
+
+Optional parameter:
+- `imported` (boolean): Filter out imported quizzes
+
+```python
+@router.get(
+    "/quizzes/{user_id}",
+    response_model_exclude={"questions", "user_id"},
+    response_model=list[Quiz],
+)
+async def get_quizzes_from_user(user_id: UUID, imported: bool | None = None):
+    if imported is None:
+        quizzes = await Quiz.objects.all(user_id=user_id, public=True)
+    else:
+        quizzes = await Quiz.objects.filter(
+            (Quiz.imported_from_kahoot == False) | (Quiz.imported_from_kahoot == None)
+        ).all(user_id=user_id, public=True)
+    
+    if len(quizzes) == 0:
+        raise HTTPException(status_code=404, detail="no quizzes found")
+    
+    return quizzes
+```
+
+<Note>
+Question content is excluded from the list view for performance. Get full details via the individual quiz endpoint.
+</Note>
+
+## Moderation
+
+### Moderation Rating
+
+Quizzes can receive a moderation rating (classquiz/db/models.py:201):
+
+```python
+mod_rating: int | None = ormar.SmallInteger(nullable=True)
+```
+
+When a quiz is edited, the moderation rating is reset (classquiz/routers/editor.py:143):
+```python
+quiz.mod_rating = None  # Reset moderation rating on edit
+```
+
+This ensures modified content goes through review again if your instance has moderation enabled.
+
+### Content Guidelines
+
+All quiz content should:
+- Be appropriate for educational use
+- Not contain offensive material
+- Respect intellectual property
+- Follow platform terms of service
+
+## Imported Quizzes
+
+### Kahoot Imports
+
+Quizzes imported from Kahoot are marked specially (classquiz/db/models.py:192):
+
+```python
+imported_from_kahoot: Optional[bool] = ormar.Boolean(default=False, nullable=True)
+kahoot_id: uuid.UUID | None = ormar.UUID(nullable=True, default=None)
+```
+
+Imported quizzes:
+- Can be made public
+- Are marked with import attribution
+- Can be filtered out in user profile views
+- Store original Kahoot ID for reference
+
+<Warning>
+Ensure you have rights to republish imported content before making it public.
+</Warning>
+
+## Search Integration
+
+### Meilisearch Indexing
+
+When a quiz is made public, it's indexed for search:
+
+```python
+await meilisearch.index(settings.meilisearch_index).add_documents(
+    [await get_meili_data(quiz)]
+)
+```
+
+The `get_meili_data()` helper extracts searchable fields:
+- Title
+- Description
+- Creator username
+- Question text
+- Tags/metadata
+
+### Updating Search Index
+
+When editing a public quiz (classquiz/routers/editor.py:130):
+
+```python
+if not quiz_input.public:
+    # Quiz made private - remove from index
+    meilisearch.index(settings.meilisearch_index).delete_document(str(quiz.id))
+else:
+    # Quiz still public - update index
+    meilisearch.index(settings.meilisearch_index).add_documents(
+        [await get_meili_data(quiz)]
+    )
+```
+
+### Deleting from Index
+
+When a quiz is deleted (classquiz/routers/quiz.py:220):
+
+```python
+meilisearch.index(settings.meilisearch_index).delete_document(str(quiz.id))
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Quality Over Quantity" icon="star">
+    Create polished, well-tested quizzes before making them public
+  </Card>
+  
+  <Card title="Descriptive Metadata" icon="file-lines">
+    Write clear titles and descriptions to help users find your quiz
+  </Card>
+  
+  <Card title="Appropriate Content" icon="shield-check">
+    Ensure content is educational and appropriate for public sharing
+  </Card>
+  
+  <Card title="Engage with Ratings" icon="comments">
+    Check your quiz ratings and improve based on community feedback
+  </Card>
+</CardGroup>
+
+## Community Engagement Tips
+
+### Creating Popular Quizzes
+
+<Steps>
+  <Step title="Choose Relevant Topics">
+    Create quizzes on subjects with high demand (common curriculum topics, popular interests)
+  </Step>
+  
+  <Step title="Use Visual Elements">
+    Add cover images and question images to make quizzes more engaging
+  </Step>
+  
+  <Step title="Test Thoroughly">
+    Play through your quiz before publishing to catch errors
+  </Step>
+  
+  <Step title="Optimize Difficulty">
+    Balance challenge with accessibility - not too easy, not too hard
+  </Step>
+  
+  <Step title="Write Clear Questions">
+    Avoid ambiguity and ensure questions are understandable
+  </Step>
+</Steps>
+
+### Building a Portfolio
+
+- Create series of related quizzes
+- Maintain consistent quality
+- Update quizzes based on feedback
+- Share your profile link with students/colleagues
+
+## Privacy & Sharing
+
+<Info>
+**What's shared when a quiz is public:**
+- Quiz title, description, and questions
+- Your username (as creator)
+- Creation and update dates
+- Cover and background images
+
+**What's NOT shared:**
+- Your email address
+- Your full account details
+- Private quizzes
+- Game results (always private to host)
+</Info>
+
+## API Reference
+
+### Community Endpoints
+
+```http
+# Get user profile
+GET /api/v1/community/user/{user_id}
+
+# Get user's public quizzes
+GET /api/v1/community/quizzes/{user_id}?imported=false
+
+# Rate a quiz
+POST /api/v1/community/rate/{quiz_id}
+Body: {"type": "LIKE" | "DISLIKE"}
+
+# Get public quiz details
+GET /api/v1/quiz/get/public/{quiz_id}
+```

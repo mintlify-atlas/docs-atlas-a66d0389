@@ -1,0 +1,877 @@
+---
+title: Database Models
+description: Complete reference for ClassQuiz database schema and models
+---
+
+# Database Models
+
+ClassQuiz uses PostgreSQL as its primary database with [Ormar](https://github.com/collerek/ormar/) as the ORM. Ormar is built on SQLAlchemy Core and Pydantic, providing async database operations with full type safety.
+
+All models are defined in `classquiz/db/models.py`.
+
+## Core Models
+
+### User
+
+The main user account model.
+
+**Table:** `users`
+
+**Fields:**
+
+```python
+class User(ormar.Model):
+    id: uuid.UUID = ormar.UUID(primary_key=True, default=uuid.uuid4())
+    email: str = ormar.String(unique=True, max_length=100)
+    username: str = ormar.String(unique=True, max_length=100)
+    password: Optional[str] = ormar.String(max_length=100, nullable=True)
+    verified: bool = ormar.Boolean(default=False)
+    verify_key: str = ormar.String(unique=True, max_length=100, nullable=True)
+    created_at: datetime = ormar.DateTime(default=datetime.now())
+    auth_type: UserAuthTypes = ormar.Enum(enum_class=UserAuthTypes, default=UserAuthTypes.LOCAL)
+    google_uid: Optional[str] = ormar.String(unique=True, max_length=255, nullable=True)
+    avatar: bytes = ormar.LargeBinary(max_length=25000, represent_as_base64_str=True)
+    github_user_id: int | None = ormar.Integer(nullable=True)
+    require_password: bool = ormar.Boolean(default=True, nullable=False)
+    backup_code: str = ormar.String(max_length=64, min_length=64, nullable=False, default=os.urandom(32).hex())
+    totp_secret: str = ormar.String(max_length=32, min_length=32, nullable=True, default=None)
+    storage_used: int = ormar.BigInteger(nullable=False, default=0, minimum=0)
+```
+
+**Authentication Types:**
+```python
+class UserAuthTypes(Enum):
+    LOCAL = "LOCAL"      # Email/password
+    GOOGLE = "GOOGLE"    # Google OAuth
+    GITHUB = "GITHUB"    # GitHub OAuth
+    CUSTOM = "CUSTOM"    # Custom OpenID provider
+```
+
+**Relationships:**
+- Has many `Quiz`
+- Has many `UserSession`
+- Has many `FidoCredentials`
+- Has many `ApiKey`
+- Has many `GameResults`
+- Has many `QuizTivity`
+- Has many `StorageItem`
+- Has many `Controller`
+- Has many `Rating`
+
+**Notes:**
+- `password` is nullable for OAuth-only accounts
+- `avatar` is stored as binary and represented as base64 string
+- `backup_code` is a 64-character hex string for account recovery
+- `totp_secret` is used for 2FA (Time-based One-Time Password)
+- `storage_used` tracks total bytes used by user's uploaded files
+
+### UserSession
+
+Tracks active user sessions for authentication.
+
+**Table:** `user_sessions`
+
+**Fields:**
+
+```python
+class UserSession(ormar.Model):
+    id: uuid.UUID = ormar.UUID(primary_key=True, default=uuid.uuid4())
+    user: Optional[User] = ormar.ForeignKey(User, ondelete=ReferentialAction.CASCADE)
+    session_key: str = ormar.String(unique=True, max_length=64)
+    created_at: datetime = ormar.DateTime(default=datetime.now())
+    ip_address: str = ormar.String(max_length=100, nullable=True)
+    user_agent: str = ormar.String(max_length=255, nullable=True)
+    last_seen: datetime = ormar.DateTime(default=datetime.now())
+```
+
+**Notes:**
+- `session_key` is used as JWT or session identifier
+- Sessions are tracked by IP and user agent for security
+- `last_seen` updated on each request
+- Cascade deleted when user is deleted
+
+### FidoCredentials
+
+Stores WebAuthn/FIDO credentials for passwordless authentication.
+
+**Table:** `fido_credentials`
+
+**Fields:**
+
+```python
+class FidoCredentials(ormar.Model):
+    pk: int = ormar.Integer(autoincrement=True, primary_key=True)
+    id: bytes = ormar.LargeBinary(max_length=256)
+    public_key: bytes = ormar.LargeBinary(max_length=256)
+    sign_count: int = ormar.Integer()
+    user: Optional[User] = ormar.ForeignKey(User, ondelete=ReferentialAction.CASCADE)
+```
+
+**Notes:**
+- Supports hardware security keys (YubiKey, etc.)
+- `sign_count` prevents replay attacks
+- Multiple credentials per user supported
+
+### ApiKey
+
+API keys for programmatic access.
+
+**Table:** `api_keys`
+
+**Fields:**
+
+```python
+class ApiKey(ormar.Model):
+    key: str = ormar.String(max_length=48, min_length=48, primary_key=True)
+    user: Optional[User] = ormar.ForeignKey(User, ondelete=ReferentialAction.CASCADE)
+```
+
+**Notes:**
+- 48-character random key
+- Used for API authentication
+- Key itself is primary key
+
+## Quiz Models
+
+### Quiz
+
+The main quiz/questionnaire model.
+
+**Table:** `quiz`
+
+**Fields:**
+
+```python
+class Quiz(ormar.Model):
+    id: uuid.UUID = ormar.UUID(primary_key=True, default=uuid.uuid4(), nullable=False, unique=True)
+    public: bool = ormar.Boolean(default=False)
+    title: str = ormar.Text()
+    description: str = ormar.Text(nullable=True)
+    created_at: datetime = ormar.DateTime(default=datetime.now())
+    updated_at: datetime = ormar.DateTime(default=datetime.now())
+    user_id: uuid.UUID = ormar.ForeignKey(User, ondelete=ReferentialAction.CASCADE)
+    questions: Json[list[QuizQuestion]] = ormar.JSON(nullable=False)
+    imported_from_kahoot: Optional[bool] = ormar.Boolean(default=False, nullable=True)
+    cover_image: Optional[str] = ormar.Text(nullable=True, unique=False)
+    background_color: str | None = ormar.Text(nullable=True, unique=False)
+    background_image: str | None = ormar.Text(nullable=True, unique=False)
+    kahoot_id: uuid.UUID | None = ormar.UUID(nullable=True, default=None)
+    likes: int = ormar.Integer(nullable=False, default=0, server_default="0")
+    dislikes: int = ormar.Integer(nullable=False, default=0, server_default="0")
+    plays: int = ormar.Integer(nullable=False, default=0, server_default="0")
+    views: int = ormar.Integer(nullable=False, default=0, server_default="0")
+    mod_rating: int | None = ormar.SmallInteger(nullable=True)
+```
+
+**Relationships:**
+- Belongs to `User` (via `user_id`)
+- Has many `GameResults`
+- Has many `Rating`
+- Many-to-many with `StorageItem`
+
+**Notes:**
+- `questions` stored as JSON array
+- Public quizzes visible in community
+- Import tracking for Kahoot compatibility
+- Engagement metrics (likes, plays, views)
+- `mod_rating` set by moderators
+
+### QuizQuestion (Pydantic Model)
+
+Stored within Quiz's `questions` JSON field.
+
+```python
+class QuizQuestion(BaseModel):
+    question: str
+    time: str  # Duration in seconds
+    type: None | QuizQuestionType = QuizQuestionType.ABCD
+    answers: list[ABCDQuizAnswer] | RangeQuizAnswer | list[TextQuizAnswer] | list[VotingQuizAnswer] | str
+    image: str | None = None
+    hide_results: bool | None = False
+```
+
+**Question Types:**
+
+```python
+class QuizQuestionType(str, Enum):
+    ABCD = "ABCD"      # Multiple choice
+    RANGE = "RANGE"    # Numeric range
+    VOTING = "VOTING"  # Vote for options
+    SLIDE = "SLIDE"    # Information slide (no answer)
+    TEXT = "TEXT"      # Text input
+    ORDER = "ORDER"    # Order items
+    CHECK = "CHECK"    # Multiple correct answers
+```
+
+**Answer Types:**
+
+```python
+# ABCD / CHECK questions
+class ABCDQuizAnswer(BaseModel):
+    right: bool
+    answer: str
+    color: str | None = None
+
+# RANGE questions
+class RangeQuizAnswer(BaseModel):
+    min: int
+    max: int
+    min_correct: int
+    max_correct: int
+
+# VOTING / ORDER questions
+class VotingQuizAnswer(BaseModel):
+    answer: str
+    image: str | None = None
+    color: str | None = None
+
+# TEXT questions
+class TextQuizAnswer(BaseModel):
+    answer: str
+    case_sensitive: bool
+```
+
+**Example Quiz Data:**
+
+```json
+{
+  "id": "26058ee8-6c6f-41e0-9d3d-70c82e38d9de",
+  "title": "Science Quiz",
+  "questions": [
+    {
+      "question": "What is H2O?",
+      "time": "30",
+      "type": "ABCD",
+      "answers": [
+        {"answer": "Water", "right": true, "color": "#3b82f6"},
+        {"answer": "Oxygen", "right": false, "color": "#ef4444"}
+      ],
+      "image": null
+    },
+    {
+      "question": "What year was the first moon landing?",
+      "time": "45",
+      "type": "RANGE",
+      "answers": {
+        "min": 1960,
+        "max": 1980,
+        "min_correct": 1969,
+        "max_correct": 1969
+      }
+    }
+  ]
+}
+```
+
+### GameResults
+
+Stores completed game session results.
+
+**Table:** `game_results`
+
+**Fields:**
+
+```python
+class GameResults(ormar.Model):
+    id: uuid.UUID = ormar.UUID(primary_key=True)
+    quiz: uuid.UUID | Quiz = ormar.ForeignKey(Quiz, ondelete=ReferentialAction.CASCADE)
+    user: uuid.UUID | User = ormar.ForeignKey(User, ondelete=ReferentialAction.CASCADE)
+    timestamp: datetime = ormar.DateTime(default=datetime.now(), nullable=False)
+    player_count: int = ormar.Integer(nullable=False, default=0)
+    note: str | None = ormar.Text(nullable=True)
+    answers: Json[list[AnswerData]] = ormar.JSON(True)
+    player_scores: Json[dict[str, str]] = ormar.JSON(nullable=True)
+    custom_field_data: Json[dict[str, str]] | None = ormar.JSON(nullable=True)
+    title: str = ormar.Text(nullable=False)
+    description: str = ormar.Text(nullable=False)
+    questions: Json[list[QuizQuestion]] = ormar.JSON(nullable=False)
+```
+
+**Relationships:**
+- Belongs to `Quiz`
+- Belongs to `User` (game host)
+
+**Notes:**
+- Denormalized: stores quiz title, description, questions
+- `answers` contains all player responses
+- `player_scores` maps username to final score
+- `custom_field_data` for additional player metadata (class, student ID, etc.)
+
+**Answer Data Structure:**
+
+```python
+class AnswerData(BaseModel):
+    username: str
+    answer: str
+    right: bool
+    time_taken: float  # Milliseconds
+    score: int
+```
+
+### Rating
+
+User ratings for quizzes (like/dislike).
+
+**Table:** `rating`
+
+**Fields:**
+
+```python
+class Rating(ormar.Model):
+    id: uuid.UUID = ormar.UUID(primary_key=True)
+    user: uuid.UUID | User = ormar.ForeignKey(User)
+    positive: bool = ormar.Boolean(nullable=False)
+    created_at: datetime = ormar.DateTime(nullable=False, server_default=func.now())
+    quiz: uuid.UUID | Quiz = ormar.ForeignKey(Quiz)
+```
+
+**Notes:**
+- One rating per user per quiz
+- `positive` = True for like, False for dislike
+- Updates quiz's `likes`/`dislikes` counters
+
+## Game Session Models (Redis-based)
+
+These are Pydantic models stored in Redis during active games.
+
+### PlayGame
+
+Active game session data.
+
+```python
+class PlayGame(BaseModel):
+    quiz_id: uuid.UUID | str
+    description: str
+    user_id: uuid.UUID
+    title: str
+    questions: list[QuizQuestion]
+    game_id: uuid.UUID
+    game_pin: str
+    started: bool = False
+    captcha_enabled: bool = False
+    cover_image: str | None = None
+    game_mode: str | None = None
+    current_question: int = -1
+    background_color: str | None = None
+    background_image: str | None = None
+    custom_field: str | None = None
+    question_show: bool = False
+
+    @classmethod
+    async def get_from_redis(self, game_pin: str) -> Self:
+        redis_data: str = await redis.get(f"game:{game_pin}")
+        return self.model_validate_json(redis_data)
+
+    async def save(self, game_pin: str, ex: int = 7200):
+        await redis.set(f"game:{game_pin}", self.model_dump_json(), ex=ex)
+
+    def to_player_data(self) -> dict:
+        """Return sanitized data for players (excludes questions)."""
+        return {
+            **json.loads(self.model_dump_json(exclude={"quiz_id", "questions", "user_id"})),
+            "question_count": len(self.questions),
+        }
+```
+
+**Redis Key:** `game:{game_pin}`
+
+**Notes:**
+- Expires after 2 hours by default
+- `current_question` is -1 before game starts
+- `question_show` indicates if question is visible to players
+
+### GameSession
+
+Game session metadata.
+
+```python
+class GameSession(BaseModel):
+    admin: str  # Socket ID of admin
+    game_id: str
+    answers: list[GameAnswer1 | None]
+
+    @classmethod
+    async def get_from_redis(self, game_pin: str) -> Self:
+        redis_data = await redis.get(f"game_session:{game_pin}")
+        return self.model_validate_json(redis_data)
+
+    async def save(self, game_pin: str, ex: int = 7200):
+        await redis.set(
+            f"game_session:{game_pin}",
+            self.model_dump_json(),
+            ex=7200,
+        )
+```
+
+**Redis Key:** `game_session:{game_pin}`
+
+### GamePlayer
+
+Player information in active game.
+
+```python
+class GamePlayer(BaseModel):
+    username: str
+    sid: str | None = None  # Socket ID
+
+    async def to_player_stack(self, game_pin: str):
+        await redis.sadd(
+            f"game_session:{game_pin}:players",
+            self.model_dump_json(),
+        )
+```
+
+**Redis Keys:**
+- `game_session:{game_pin}:players` - Set of all players
+- `game_session:{game_pin}:players:{username}` - Socket ID for specific player
+- `game_session:{game_pin}:player_scores` - Hash of username → score
+
+### AnswerDataList
+
+List of answers for a question.
+
+```python
+class AnswerDataList(RootModel):
+    root: list[AnswerData]
+
+    def __iter__(self):
+        return iter(self.root)
+
+    def append(self, item):
+        self.root.append(item)
+
+    def __len__(self) -> int:
+        return len(self.root)
+
+    @classmethod
+    async def get_redis_or_empty(self, game_pin: str, question_number: str) -> Self:
+        redis_res = await redis.get(f"game_session:{game_pin}:{question_number}")
+        if redis_res is None:
+            return self([])
+        else:
+            return self.model_validate_json(redis_res)
+```
+
+**Redis Key:** `game_session:{game_pin}:{question_index}`
+
+## QuizTivity Models
+
+"QuizTivity" is an interactive activity builder feature.
+
+### QuizTivity
+
+**Table:** `quiztivitys`
+
+**Fields:**
+
+```python
+class QuizTivity(ormar.Model):
+    id: uuid.UUID = ormar.UUID(primary_key=True)
+    title: str = ormar.Text(nullable=False)
+    created_at: datetime = ormar.DateTime(nullable=False, server_default=func.now())
+    user: User | None = ormar.ForeignKey(User, ondelete=ReferentialAction.CASCADE)
+    pages: list[QuizTivityPage] = ormar.JSON(nullable=False)
+```
+
+**Relationships:**
+- Belongs to `User`
+- Has many `QuizTivityShare`
+- Many-to-many with `StorageItem`
+
+**Notes:**
+- `pages` stored as JSON
+- Pages defined in `classquiz/db/quiztivity.py`
+
+### QuizTivityShare
+
+Shared/public links for QuizTivity.
+
+**Table:** `quiztivityshares`
+
+**Fields:**
+
+```python
+class QuizTivityShare(ormar.Model):
+    id: uuid.UUID = ormar.UUID(primary_key=True)
+    name: str | None = ormar.Text(nullable=True)
+    expire_at: datetime | None = ormar.DateTime(nullable=True)
+    quiztivity: QuizTivity | None = ormar.ForeignKey(QuizTivity, ondelete=ReferentialAction.CASCADE)
+    user: User | None = ormar.ForeignKey(User, ondelete=ReferentialAction.CASCADE)
+```
+
+**Notes:**
+- Optional expiration
+- Share name for organization
+
+## Storage Models
+
+### StorageItem
+
+Uploaded files (images, videos).
+
+**Table:** `storage_items`
+
+**Fields:**
+
+```python
+class StorageItem(ormar.Model):
+    id: uuid.UUID = ormar.UUID(primary_key=True)
+    uploaded_at: datetime = ormar.DateTime(nullable=False, default=datetime.now())
+    mime_type: str = ormar.Text(nullable=False)
+    hash: bytes | None = ormar.LargeBinary(nullable=True, min_length=16, max_length=16)
+    user: User | None = ormar.ForeignKey(User, ondelete=ReferentialAction.SET_NULL)
+    size: int = ormar.BigInteger(nullable=False)
+    storage_path: str | None = ormar.Text(nullable=True)
+    deleted_at: datetime | None = ormar.DateTime(nullable=True, default=None)
+    quiztivities: list[QuizTivity] | None = ormar.ManyToMany(QuizTivity)
+    quizzes: list[Quiz] | None = ormar.ManyToMany(Quiz)
+    alt_text: str | None = ormar.Text(default=None, nullable=True)
+    filename: str | None = ormar.Text(default=None, nullable=True)
+    thumbhash: str | None = ormar.Text(default=None, nullable=True)
+    server: str | None = ormar.Text(default=None, nullable=True)
+    imported: bool = ormar.Boolean(default=False, nullable=True)
+```
+
+**Relationships:**
+- Belongs to `User` (SET_NULL on delete)
+- Many-to-many with `Quiz`
+- Many-to-many with `QuizTivity`
+
+**Allowed MIME Types:**
+```python
+ALLOWED_MIME_TYPES = [
+    "image/png",
+    "video/mp4",
+    "image/jpeg",
+    "image/gif",
+    "image/webp"
+]
+```
+
+**Notes:**
+- `hash` is MD5 hash for deduplication (16 bytes)
+- `storage_path` used for local storage backend
+- `server` for S3 bucket identifier
+- Soft delete with `deleted_at`
+- `thumbhash` for blur placeholder
+- `size` tracked for storage quota enforcement
+
+## Controller Models
+
+For remote game control (e.g., mobile device controlling presentation).
+
+### Controller
+
+**Table:** `controller`
+
+**Fields:**
+
+```python
+class Controller(ormar.Model):
+    id: uuid.UUID = ormar.UUID(primary_key=True)
+    user: uuid.UUID | User = ormar.ForeignKey(User)
+    secret_key: str = ormar.String(nullable=False, max_length=24, min_length=24)
+    player_name: str = ormar.Text(nullable=False)
+    last_seen: datetime | None = ormar.DateTime(nullable=True)
+    first_seen: datetime | None = ormar.DateTime(nullable=True)
+    name: str = ormar.Text(nullable=False)
+    os_version: str | None = ormar.Text(nullable=True)
+    wanted_os_version: str = ormar.Text(nullable=True, default=None)
+```
+
+**Notes:**
+- `secret_key` for authentication
+- Track version for updates
+- Device name and player name
+
+## Instance Data
+
+Singleton table for instance-level configuration.
+
+### InstanceData
+
+**Table:** `instance_data`
+
+**Fields:**
+
+```python
+class InstanceData(ormar.Model):
+    instance_id: uuid.UUID = ormar.UUID(primary_key=True, default=uuid.uuid4(), nullable=False, unique=True)
+```
+
+**Notes:**
+- Typically contains only one row
+- Used for instance identification
+
+## Database Configuration
+
+From `classquiz/config.py`:
+
+```python
+class Settings(BaseSettings):
+    db_url: PostgresDsn | str = "postgresql://postgres:mysecretpassword@localhost:5432/classquiz"
+```
+
+Ormar configuration in `classquiz/db/__init__.py`:
+
+```python
+import databases
+import sqlalchemy
+
+metadata = sqlalchemy.MetaData()
+database = databases.Database(settings().db_url)
+```
+
+All models use:
+
+```python
+ormar_config = ormar.OrmarConfig(
+    tablename="table_name",
+    metadata=metadata,
+    database=database,
+)
+```
+
+## Migrations
+
+ClassQuiz uses Alembic for database migrations.
+
+**Generate migration:**
+```bash
+alembic revision --autogenerate -m "Description"
+```
+
+**Apply migrations:**
+```bash
+alembic upgrade head
+```
+
+**Migration files:** `alembic/versions/`
+
+## Indexes and Performance
+
+### Key Indexes
+- `users.email` - UNIQUE index for login
+- `users.username` - UNIQUE index
+- `user_sessions.session_key` - UNIQUE index for session lookup
+- `quiz.user_id` - Foreign key index
+- `game_results.quiz` - Foreign key index
+- `game_results.user` - Foreign key index
+
+### Query Optimization
+- Ormar uses async queries (via `asyncpg`)
+- Use `.select_related()` for foreign keys
+- Use `.prefetch_related()` for reverse relations
+
+**Example:**
+```python
+# Efficient: loads user in same query
+quiz = await Quiz.objects.select_related("user_id").get(id=quiz_id)
+
+# Inefficient: N+1 queries
+quizzes = await Quiz.objects.all()
+for quiz in quizzes:
+    user = await quiz.user_id  # Extra query per quiz
+```
+
+## Data Validation
+
+All models use Pydantic validation:
+
+```python
+# QuizQuestion validates answer types match question type
+@field_validator("answers")
+def answers_not_none_if_abcd_type(cls, v, info: ValidationInfo):
+    if info.data["type"] == QuizQuestionType.ABCD and not isinstance(v[0], ABCDQuizAnswer):
+        raise ValueError("Answers can't be none if type is ABCD")
+    # ... more validations
+    return v
+```
+
+## Storage Quota System
+
+```python
+class Settings(BaseSettings):
+    free_storage_limit: int = 1074000000  # ~1GB in bytes
+```
+
+- Each user has `storage_used` field
+- Incremented on file upload
+- Checked before allowing new uploads
+- Decremented on file deletion
+
+## Redis Data Patterns
+
+While primary data is in PostgreSQL, active games use Redis:
+
+```python
+# Game data (expires in 2 hours)
+f"game:{game_pin}" → PlayGame (JSON)
+f"game_session:{game_pin}" → GameSession (JSON)
+
+# Player data
+f"game_session:{game_pin}:players" → Set[GamePlayer]
+f"game_session:{game_pin}:players:{username}" → socket_id
+f"game_session:{game_pin}:player_scores" → Hash[username → score]
+
+# Question data
+f"game_session:{game_pin}:{question_index}" → AnswerDataList (JSON)
+f"game:{game_pin}:current_time" → ISO timestamp
+
+# Lobby tracking
+f"game_in_lobby:{user_id}" → game_pin
+
+# Export tokens (2 hour expiry)
+f"export_token:{token}" → results (JSON)
+```
+
+## Best Practices
+
+### Creating Models
+
+```python
+# Use Ormar's create method
+user = await User.objects.create(
+    email="user@example.com",
+    username="user123",
+    password=hashed_password,
+)
+
+# Or instantiate and save
+quiz = Quiz(
+    title="My Quiz",
+    description="A great quiz",
+    user_id=user,
+    questions=[...],
+)
+await quiz.save()
+```
+
+### Querying
+
+```python
+# Get single object
+quiz = await Quiz.objects.get(id=quiz_id)
+
+# Get or None
+quiz = await Quiz.objects.get_or_none(id=quiz_id)
+
+# Filter
+public_quizzes = await Quiz.objects.filter(public=True).all()
+
+# Complex queries
+quizzes = await Quiz.objects.filter(
+    ormar.or_(
+        public=True,
+        user_id=user_id,
+    )
+).order_by("-created_at").limit(10).all()
+```
+
+### Updating
+
+```python
+# Update single field
+await quiz.update(title="New Title")
+
+# Update multiple fields
+await quiz.update(
+    title="New Title",
+    description="New Description",
+    updated_at=datetime.now(),
+)
+
+# Bulk update
+await Quiz.objects.filter(user_id=user).update(public=False)
+```
+
+### Deleting
+
+```python
+# Delete instance
+await quiz.delete()
+
+# Bulk delete
+await Quiz.objects.filter(imported_from_kahoot=True).delete()
+```
+
+### Transactions
+
+```python
+from classquiz.db import database
+
+async with database.transaction():
+    user = await User.objects.create(...)
+    quiz = await Quiz.objects.create(user_id=user, ...)
+    # If any operation fails, all are rolled back
+```
+
+## Schema Diagram
+
+```mermaid
+erDiagram
+    User ||--o{ Quiz : creates
+    User ||--o{ UserSession : has
+    User ||--o{ FidoCredentials : has
+    User ||--o{ ApiKey : has
+    User ||--o{ GameResults : hosts
+    User ||--o{ QuizTivity : creates
+    User ||--o{ Controller : owns
+    User ||--o{ Rating : gives
+    User ||--o{ StorageItem : uploads
+    
+    Quiz ||--o{ GameResults : produces
+    Quiz ||--o{ Rating : receives
+    Quiz }o--o{ StorageItem : uses
+    
+    QuizTivity }o--o{ StorageItem : uses
+    QuizTivity ||--o{ QuizTivityShare : has
+    
+    User {
+        uuid id PK
+        string email UK
+        string username UK
+        string password
+        bool verified
+        datetime created_at
+        enum auth_type
+        int storage_used
+    }
+    
+    Quiz {
+        uuid id PK
+        uuid user_id FK
+        string title
+        json questions
+        bool public
+        int likes
+        int plays
+        datetime created_at
+    }
+    
+    GameResults {
+        uuid id PK
+        uuid quiz FK
+        uuid user FK
+        datetime timestamp
+        json answers
+        json player_scores
+        int player_count
+    }
+    
+    StorageItem {
+        uuid id PK
+        uuid user FK
+        string mime_type
+        int size
+        bytes hash
+        datetime uploaded_at
+        datetime deleted_at
+    }
+```
+
+## See Also
+
+- [Architecture Overview](/developer/architecture) - System architecture
+- [Socket.IO Events](/developer/socket-events) - Real-time communication
+- [Ormar Documentation](https://collerek.github.io/ormar/) - ORM reference

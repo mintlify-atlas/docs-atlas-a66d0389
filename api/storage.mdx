@@ -1,0 +1,404 @@
+---
+title: 'Storage & File Upload'
+description: 'Upload, manage, and retrieve files and images'
+---
+
+## Upload File
+
+<api>POST /api/v1/storage/</api>
+
+Upload a file to ClassQuiz storage.
+
+### Request Body
+
+<ParamField body="file" type="file" required>
+  File to upload (multipart/form-data)
+</ParamField>
+
+### Authentication
+
+Required
+
+### Supported File Types
+
+- Images: `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `image/svg+xml`
+- Other allowed MIME types as configured
+
+### Response
+
+<ResponseField name="id" type="uuid">
+  Unique file ID
+</ResponseField>
+
+<ResponseField name="uploaded_at" type="datetime">
+  Upload timestamp
+</ResponseField>
+
+<ResponseField name="mime_type" type="string">
+  File MIME type
+</ResponseField>
+
+<ResponseField name="hash" type="string">
+  File content hash (hex)
+</ResponseField>
+
+<ResponseField name="size" type="integer">
+  File size in bytes
+</ResponseField>
+
+<ResponseField name="alt_text" type="string">
+  Alt text for accessibility
+</ResponseField>
+
+<ResponseField name="filename" type="string">
+  Original filename
+</ResponseField>
+
+<ResponseField name="thumbhash" type="string">
+  Thumbnail hash for blur placeholder
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "uploaded_at": "2024-01-15T10:30:00Z",
+  "mime_type": "image/png",
+  "hash": "a1b2c3d4...",
+  "size": 245678,
+  "alt_text": null,
+  "filename": null,
+  "thumbhash": "abc123...",
+  "server": null,
+  "imported": false
+}
+```
+
+### Error Codes
+
+- `422`: Unsupported file type
+- `409`: Storage limit reached
+
+---
+
+## Upload Raw File
+
+<api>POST /api/v1/storage/raw</api>
+
+Upload raw file data via request body (streaming).
+
+### Request Body
+
+Raw file bytes streamed in request body.
+
+### Headers
+
+<ParamField header="Content-Type" type="string" required>
+  MIME type of the file
+</ParamField>
+
+### Authentication
+
+Required
+
+### Response
+
+Same as standard file upload endpoint.
+
+---
+
+## Download File
+
+<api>GET /api/v1/storage/download/{file_name}</api>
+
+Download a file by its name or ID.
+
+### Path Parameters
+
+<ParamField path="file_name" type="string" required>
+  File name or UUID with optional user ID (format: `uuid--user-uuid`)
+</ParamField>
+
+### Response
+
+Returns file stream with appropriate headers:
+
+- `Content-Type`: File MIME type
+- `Cache-Control`: `public, immutable, max-age=31536000`
+- `X-Hash`: File content hash
+- `X-Thumbhash`: Thumbnail hash
+- `X-Alt-Text`: Base64-encoded alt text
+- `Content-Size`: File size in bytes
+
+### S3 Backend
+
+If using S3 storage, returns a redirect (302) to a signed URL valid for 300 seconds.
+
+---
+
+## Get File Info
+
+<api>GET /api/v1/storage/info/{file_name}</api>
+
+Get file metadata without downloading the file.
+
+### Path Parameters
+
+<ParamField path="file_name" type="string" required>
+  File name or UUID
+</ParamField>
+
+### Response
+
+Returns HTTP 200 with headers containing file metadata (same as download endpoint).
+
+---
+
+## File Metadata (HEAD)
+
+<api>HEAD /api/v1/storage/download/{file_name}</api>
+
+Get file metadata using HEAD request.
+
+### Path Parameters
+
+<ParamField path="file_name" type="string" required>
+  File name or UUID
+</ParamField>
+
+### Response
+
+Returns headers only, no body. For S3 storage, returns 307 redirect.
+
+---
+
+## Get File Metadata
+
+<api>GET /api/v1/storage/meta/{file_id}</api>
+
+Get detailed metadata for a file.
+
+### Path Parameters
+
+<ParamField path="file_id" type="uuid" required>
+  File UUID
+</ParamField>
+
+### Authentication
+
+Required - Must be file owner
+
+### Response
+
+Returns public storage item object (see Upload File response).
+
+---
+
+## Update File Metadata
+
+<api>PUT /api/v1/storage/meta/{file_id}</api>
+
+Update file metadata (alt text, filename).
+
+### Path Parameters
+
+<ParamField path="file_id" type="uuid" required>
+  File UUID
+</ParamField>
+
+### Request Body
+
+<ParamField body="alt_text" type="string">
+  Accessibility alt text (empty string to remove)
+</ParamField>
+
+<ParamField body="filename" type="string">
+  Display filename (empty string to remove)
+</ParamField>
+
+### Authentication
+
+Required - Must be file owner
+
+### Example Request
+
+```json
+{
+  "alt_text": "A beautiful sunset over the ocean",
+  "filename": "sunset.jpg"
+}
+```
+
+---
+
+## Delete File
+
+<api>DELETE /api/v1/storage/meta/{file_id}</api>
+
+Mark a file as deleted (soft delete).
+
+### Path Parameters
+
+<ParamField path="file_id" type="uuid" required>
+  File UUID
+</ParamField>
+
+### Authentication
+
+Required - Must be file owner
+
+### Response
+
+Returns HTTP 200. File is marked with `deleted_at` timestamp and removed from storage backend.
+
+---
+
+## List Files
+
+<api>GET /api/v1/storage/list</api>
+
+List user's uploaded files.
+
+### Query Parameters
+
+<ParamField query="since" type="datetime">
+  Only return files uploaded after this date (default: 9999 weeks ago)
+</ParamField>
+
+### Authentication
+
+Required
+
+### Response
+
+Array of private storage items:
+
+<ResponseField name="id" type="uuid">
+  File ID
+</ResponseField>
+
+<ResponseField name="uploaded_at" type="datetime">
+  Upload timestamp
+</ResponseField>
+
+<ResponseField name="mime_type" type="string">
+  File MIME type
+</ResponseField>
+
+<ResponseField name="size" type="integer">
+  File size in bytes
+</ResponseField>
+
+<ResponseField name="quizzes" type="array">
+  Array of quiz IDs using this file
+</ResponseField>
+
+<ResponseField name="quiztivities" type="array">
+  Array of quiztivity IDs using this file
+</ResponseField>
+
+### Example Response
+
+```json
+[
+  {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "uploaded_at": "2024-01-15T10:30:00Z",
+    "mime_type": "image/png",
+    "size": 245678,
+    "quizzes": [
+      {"id": "quiz-uuid-1"},
+      {"id": "quiz-uuid-2"}
+    ],
+    "quiztivities": []
+  }
+]
+```
+
+---
+
+## Get Latest Files
+
+<api>GET /api/v1/storage/list/last</api>
+
+Get the most recently uploaded files.
+
+### Query Parameters
+
+<ParamField query="count" type="integer" default="50">
+  Number of files to return (max 50)
+</ParamField>
+
+### Authentication
+
+Required
+
+### Response
+
+Array of private storage items (same format as List Files).
+
+---
+
+## Get Storage Limit
+
+<api>GET /api/v1/storage/limit</api>
+
+Get user's storage usage and limit information.
+
+### Authentication
+
+Required
+
+### Response
+
+<ResponseField name="limit" type="integer">
+  Storage limit in bytes
+</ResponseField>
+
+<ResponseField name="limit_reached" type="boolean">
+  Whether storage limit has been exceeded
+</ResponseField>
+
+<ResponseField name="used" type="integer">
+  Storage used in bytes
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "limit": 104857600,
+  "limit_reached": false,
+  "used": 45678901
+}
+```
+
+---
+
+## Storage Best Practices
+
+### File Naming
+
+Files are stored with UUID-based names. The system supports two formats:
+
+1. **Simple UUID**: `123e4567-e89b-12d3-a456-426614174000`
+2. **UUID with user**: `file-uuid--user-uuid`
+
+### Caching
+
+Files are served with aggressive caching headers (`max-age=31536000`). Files are immutable once uploaded.
+
+### Deduplication
+
+The system calculates file hashes asynchronously. Identical files can be deduplicated based on content hash.
+
+### ThumbHash
+
+Images are processed to generate ThumbHash - a compact representation for blur placeholders while the image loads.
+
+### Storage Backends
+
+ClassQuiz supports multiple storage backends:
+- **Local filesystem**: Files served directly
+- **S3-compatible**: Returns signed URLs for direct access

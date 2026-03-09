@@ -1,0 +1,422 @@
+---
+title: Authentication
+description: Learn how to authenticate with the ClassQuiz API using JWT tokens, API keys, and OAuth providers
+---
+
+ClassQuiz supports multiple authentication methods to accommodate different use cases, from user-facing applications to programmatic API access.
+
+## Authentication Methods
+
+ClassQuiz provides three primary authentication methods:
+
+1. **JWT Bearer Tokens** - For web and mobile applications
+2. **Session Cookies** - For browser-based authentication
+3. **API Keys** - For programmatic access and integrations
+4. **OAuth Providers** - Google, GitHub, and custom OpenID providers
+
+## JWT Token Authentication
+
+### Overview
+
+The primary authentication method uses JSON Web Tokens (JWT) with the HS256 algorithm (see `auth.py:29`). Tokens can be provided either as Bearer tokens in the Authorization header or as HTTP-only cookies.
+
+### Token Configuration
+
+```python
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Configurable via settings
+```
+
+Tokens are signed with the `SECRET_KEY` from your configuration and expire after 30 minutes by default (see `auth.py:30`).
+
+<Note>
+  JWT tokens are cached in Redis for the duration of their validity to improve performance. The token's email is stored with an expiry matching the token lifetime (see `authenticate_user.py:42`).
+</Note>
+
+### Providing Authentication
+
+ClassQuiz accepts authentication tokens in two ways:
+
+#### 1. Authorization Header
+
+```bash
+curl -H "Authorization: Bearer {access_token}" \
+  https://your-instance.com/api/v1/users/me
+```
+
+#### 2. HTTP-Only Cookie
+
+Tokens are automatically sent via cookies after login:
+
+```
+access_token=Bearer {token}; HttpOnly; SameSite=Lax
+```
+
+The cookie-based approach is implemented in `OAuth2PasswordBearerWithCookie` (see `auth.py:33-63`), which checks both `request.state.access_token` and the `access_token` cookie.
+
+### Token Endpoints
+
+The OAuth2 token URL is configured at:
+```
+/api/v1/users/token/cookie
+```
+
+## Login Flow
+
+ClassQuiz implements a sophisticated multi-step login system that supports various authentication factors.
+
+### Step 1: Start Login
+
+**POST** `/api/v1/login/start`
+
+Initiate the login process by providing email or username.
+
+**Request:**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Response:**
+```json
+{
+  "step_1": ["PASSWORD", "PASSKEY"],
+  "step_2": ["TOTP"],
+  "session_id": "a1b2c3d4e5f6...",
+  "webauthn_data": "{...}"  // Only if passkey available
+}
+```
+
+The response indicates which authentication methods are available for steps 1 and 2:
+
+- **PASSWORD** - Traditional password authentication
+- **PASSKEY** - WebAuthn/FIDO2 authentication
+- **TOTP** - Time-based one-time password (2FA)
+- **BACKUP** - Backup recovery code
+
+<Note>
+  The login session is stored in Redis with a 10-minute expiry (see `login.py:144`). If the user doesn't exist or isn't verified, a dummy session is created to prevent user enumeration.
+</Note>
+
+### Step 2: Complete Authentication Step
+
+**POST** `/api/v1/login/step/{step_id}`
+
+Complete the authentication step(s). The `step_id` is either `1` or `2`.
+
+**Query Parameters:**
+- `session_id` - The session ID from the start login response
+
+**Request:**
+```json
+{
+  "auth_type": "PASSWORD",
+  "data": "user_password_here"
+}
+```
+
+**Response (Step 1 with Step 2 required):**
+```
+HTTP 202 Accepted
+```
+
+**Response (Final Step - Success):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+Additionally, two cookies are set:
+1. `access_token` - The JWT bearer token (expires in 1 year)
+2. `rememberme_token` - Session key for automatic re-authentication (expires in 1 year)
+
+### Authentication Types
+
+#### Password Authentication
+
+```json
+{
+  "auth_type": "PASSWORD",
+  "data": "mySecurePassword123"
+}
+```
+
+Passwords are verified using Argon2 hashing (see `auth.py:28`, `auth.py:69-70`).
+
+#### Passkey (WebAuthn) Authentication
+
+```json
+{
+  "auth_type": "PASSKEY",
+  "data": {
+    "id": "...",
+    "rawId": "...",
+    "response": {
+      "authenticatorData": "...",
+      "clientDataJSON": "...",
+      "signature": "..."
+    }
+  }
+}
+```
+
+WebAuthn credentials are verified against stored FIDO credentials (see `login.py:64-99`).
+
+#### TOTP Authentication
+
+```json
+{
+  "auth_type": "TOTP",
+  "data": "123456"
+}
+```
+
+TOTP codes are verified using PyOTP (see `login.py:208-210`).
+
+#### Backup Code Authentication
+
+```json
+{
+  "auth_type": "BACKUP",
+  "data": "a1b2c3d4e5f6..."
+}
+```
+
+<Note>
+  Backup codes are single-use. After successful authentication, a new backup code is generated (see `login.py:198`).
+</Note>
+
+### Multi-Factor Authentication
+
+Users can configure `require_password` to enforce multi-step authentication:
+
+- When `require_password = true`, password is required first (step 1), followed by TOTP/Passkey (step 2)
+- When `require_password = false`, any available method can be used in step 1
+
+See `login.py:119-136` for the step determination logic.
+
+## User Session Management
+
+After successful authentication, ClassQuiz creates a `UserSession` record containing:
+
+```python
+UserSession(
+    user=user,
+    session_key=session_key,      # 64-character hex string
+    ip_address=remote_ip,           # From X-Forwarded-For or client IP
+    user_agent=user_agent,          # Browser/client identifier
+    last_seen=datetime.now()
+)
+```
+
+Sessions are tracked in the database and can be managed by users to view and revoke active sessions.
+
+## Remember Me Functionality
+
+The `rememberme_token` cookie enables automatic re-authentication:
+
+1. When a user's access token expires, the middleware checks for a valid `rememberme_token`
+2. If valid, a new access token is automatically issued
+3. The session's `last_seen` timestamp is updated
+
+This is handled by the `rememberme_middleware` (see `__init__.py:77`).
+
+## API Key Authentication
+
+For programmatic access, ClassQuiz supports API keys stored in the `ApiKey` model.
+
+### API Key Structure
+
+```python
+class ApiKey(ormar.Model):
+    key: str  # 48-character string
+    user: User  # Associated user
+```
+
+### Using API Keys
+
+API keys are checked using the `check_api_key` function (see `auth.py:184-194`):
+
+```python
+async def check_api_key(key: str) -> uuid.UUID | None:
+    # Returns user ID if valid, None otherwise
+```
+
+**Caching:** API keys are cached in Redis for 1 hour (3600 seconds) to improve performance:
+```
+Key: apikey:{key}
+Value: {user_id}
+Expiry: 3600 seconds
+```
+
+<Note>
+  API key authentication bypasses the standard OAuth2 flow. Ensure API keys are stored securely and never committed to version control.
+</Note>
+
+## OAuth Providers
+
+ClassQuiz supports authentication via OAuth providers:
+
+### Supported Providers
+
+1. **Google OAuth** - Configured via `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+2. **GitHub OAuth** - Configured via `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`
+3. **Custom OpenID** - Configured via `CUSTOM_OPENID_PROVIDER` settings
+
+### User Auth Types
+
+Users authenticated via OAuth have their `auth_type` set accordingly (see `models.py:30-34`):
+
+```python
+class UserAuthTypes(Enum):
+    LOCAL = "LOCAL"      # Email/password
+    GOOGLE = "GOOGLE"    # Google OAuth
+    GITHUB = "GITHUB"    # GitHub OAuth
+    CUSTOM = "CUSTOM"    # Custom OpenID provider
+```
+
+OAuth users may have:
+- `google_uid` - Google user identifier
+- `github_user_id` - GitHub user ID
+- `password = None` - OAuth users don't require passwords
+
+### Custom OpenID Provider
+
+Configure a custom OpenID Connect provider:
+
+```python
+CUSTOM_OPENID_PROVIDER__SCOPES="openid email profile"
+CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL="https://provider.com/.well-known/openid-configuration"
+CUSTOM_OPENID_PROVIDER__CLIENT_ID="your_client_id"
+CUSTOM_OPENID_PROVIDER__CLIENT_SECRET="your_client_secret"
+```
+
+## Accessing Current User
+
+ClassQuiz provides several dependency functions to access the authenticated user:
+
+### get_current_user
+
+Requires valid authentication, raises 401 if invalid:
+
+```python
+from classquiz.auth import get_current_user
+
+@router.get("/protected")
+async def protected_route(user: User = Depends(get_current_user)):
+    return {"user_id": user.id}
+```
+
+### get_current_user_optional
+
+Returns `None` if not authenticated (see `auth.py:157-169`):
+
+```python
+from classquiz.auth import get_current_user_optional
+
+@router.get("/optional")
+async def optional_route(user: User | None = Depends(get_current_user_optional)):
+    if user:
+        return {"authenticated": True, "user_id": user.id}
+    return {"authenticated": False}
+```
+
+### get_current_moderator
+
+Requires user to be in the moderators list (see `auth.py:131-145`):
+
+```python
+@router.get("/moderate")
+async def moderate(user: User = Depends(get_current_moderator)):
+    # Only accessible to moderators
+    pass
+```
+
+### get_admin_user
+
+Requires user to be the first registered user (admin) (see `auth.py:148-154`):
+
+```python
+@router.get("/admin")
+async def admin_only(user: User = Depends(get_admin_user)):
+    # Only accessible to admin
+    pass
+```
+
+## Security Best Practices
+
+### Password Security
+
+- Passwords are hashed using Argon2 (see `auth.py:28`)
+- Never send passwords in GET requests
+- Always use HTTPS in production
+
+### Token Security
+
+- Tokens expire after 30 minutes by default
+- Set `SECRET_KEY` to a cryptographically secure random value
+- Rotate `SECRET_KEY` periodically (invalidates all existing tokens)
+
+### Session Security
+
+- Session cookies are `HttpOnly` to prevent XSS attacks
+- Cookies use `SameSite=Lax` to mitigate CSRF
+- Sessions track IP addresses for security monitoring
+
+### API Key Security
+
+- Generate API keys with sufficient entropy (48 characters)
+- Store API keys securely, never in client-side code
+- Implement key rotation for production systems
+- Monitor API key usage for suspicious activity
+
+## Error Handling
+
+Authentication errors return appropriate HTTP status codes:
+
+### 401 Unauthorized
+
+```json
+{
+  "detail": "Not authenticated",
+  "headers": {
+    "WWW-Authenticate": "Bearer"
+  }
+}
+```
+
+```json
+{
+  "detail": "Could not validate credentials",
+  "headers": {
+    "WWW-Authenticate": "Bearer"
+  }
+}
+```
+
+```json
+{
+  "detail": "wrong credentials"
+}
+```
+
+### 401 During Login Flow
+
+```json
+{
+  "detail": "totp wrong"
+}
+```
+
+```json
+{
+  "detail": "webauthn failed"
+}
+```
+
+<Note>
+  Authentication errors are intentionally generic to prevent user enumeration attacks. The start login endpoint returns dummy data for non-existent users (see `login.py:113-115`).
+</Note>

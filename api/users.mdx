@@ -1,0 +1,487 @@
+---
+title: 'User Management'
+description: 'User registration, authentication, and account management'
+---
+
+## Register User
+
+<api>POST /api/v1/users/create</api>
+
+Create a new user account.
+
+### Request Body
+
+<ParamField body="email" type="string" required>
+  User's email address
+</ParamField>
+
+<ParamField body="username" type="string" required>
+  Desired username (cannot be 32 characters long)
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User's password (will be hashed)
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="uuid">
+  User's unique ID
+</ResponseField>
+
+<ResponseField name="verified" type="boolean">
+  Email verification status
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User's email address
+</ResponseField>
+
+### Example Request
+
+```json
+{
+  "email": "user@example.com",
+  "username": "johndoe",
+  "password": "securePassword123"
+}
+```
+
+### Error Codes
+
+- `423`: Registration is disabled
+- `409`: User already exists with that email or username
+- `400`: Invalid email format
+
+---
+
+## Start Login
+
+<api>POST /api/v1/login/start</api>
+
+Initiate login flow and discover available authentication methods.
+
+### Request Body
+
+<ParamField body="email" type="string" required>
+  Email address or username
+</ParamField>
+
+### Response
+
+<ResponseField name="step_1" type="array">
+  Available first-step authentication methods:
+  - `PASSWORD`: Standard password
+  - `PASSKEY`: WebAuthn passkey
+  - `TOTP`: Time-based one-time password
+</ResponseField>
+
+<ResponseField name="step_2" type="array">
+  Required second-step authentication methods (for 2FA)
+</ResponseField>
+
+<ResponseField name="session_id" type="string">
+  Login session ID to use in subsequent requests
+</ResponseField>
+
+<ResponseField name="webauthn_data" type="string">
+  WebAuthn challenge data (if passkey is available)
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "step_1": ["PASSWORD", "PASSKEY"],
+  "step_2": ["TOTP"],
+  "session_id": "abc123def456",
+  "webauthn_data": "{...}"
+}
+```
+
+---
+
+## Complete Login Step
+
+<api>POST /api/v1/login/step/{step_id}</api>
+
+Complete an authentication step (1 or 2).
+
+### Path Parameters
+
+<ParamField path="step_id" type="integer" required>
+  Step number (1 or 2)
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="session_id" type="string" required>
+  Login session ID from start_login
+</ParamField>
+
+### Request Body
+
+<ParamField body="auth_type" type="string" required>
+  Authentication type: `PASSWORD`, `PASSKEY`, `TOTP`, or `BACKUP`
+</ParamField>
+
+<ParamField body="data" type="string | object" required>
+  Authentication data:
+  - For PASSWORD: password string
+  - For PASSKEY: WebAuthn credential object
+  - For TOTP: 6-digit code
+  - For BACKUP: backup code string
+</ParamField>
+
+### Response
+
+- **Step 1 complete, Step 2 required**: Returns `202 Accepted`
+- **Login complete**: Returns user session with cookies set
+- **Authentication failed**: Returns `401 Unauthorized`
+
+---
+
+## Get Current User
+
+<api>GET /api/v1/users/me</api>
+
+Get the authenticated user's profile.
+
+### Authentication
+
+Required
+
+### Response
+
+<ResponseField name="id" type="uuid">
+  User ID
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  Email address
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  Username
+</ResponseField>
+
+<ResponseField name="verified" type="boolean">
+  Email verification status
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  Account creation timestamp
+</ResponseField>
+
+<ResponseField name="auth_type" type="string">
+  Authentication type: LOCAL, GOOGLE, GITHUB, or CUSTOM
+</ResponseField>
+
+<ResponseField name="storage_used" type="integer">
+  Storage used in bytes
+</ResponseField>
+
+---
+
+## Update Password
+
+<api>PUT /api/v1/users/password/update</api>
+
+Change the user's password.
+
+### Request Body
+
+<ParamField body="old_password" type="string" required>
+  Current password
+</ParamField>
+
+<ParamField body="new_password" type="string" required>
+  New password
+</ParamField>
+
+### Authentication
+
+Required
+
+### Response
+
+Signs out all sessions and returns success message.
+
+```json
+{
+  "message": "Password updated successfully"
+}
+```
+
+---
+
+## Logout
+
+<api>GET /api/v1/users/logout</api>
+
+Log out the current session.
+
+### Response
+
+Clears authentication cookies and redirects to home page.
+
+---
+
+## Sign Out Everywhere
+
+<api>DELETE /api/v1/users/signout-everywhere</api>
+
+Invalidate all user sessions across all devices.
+
+### Authentication
+
+Required
+
+### Response
+
+```json
+{
+  "message": "Signout everywhere"
+}
+```
+
+---
+
+## Verify Email
+
+<api>GET /api/v1/users/verify/{verify_key}</api>
+
+Verify user email address with verification key.
+
+### Path Parameters
+
+<ParamField path="verify_key" type="string" required>
+  Verification key from email
+</ParamField>
+
+### Response
+
+Redirects to login page with verification confirmation.
+
+---
+
+## Forgot Password
+
+<api>POST /api/v1/users/forgot-password</api>
+
+Request a password reset email.
+
+### Request Body
+
+<ParamField body="email" type="string" required>
+  User's email address
+</ParamField>
+
+### Response
+
+```json
+{
+  "message": "Password reset email sent"
+}
+```
+
+Note: Always returns success even if email doesn't exist (security measure).
+
+---
+
+## Reset Password
+
+<api>POST /api/v1/users/reset-password</api>
+
+Reset password using token from email.
+
+### Request Body
+
+<ParamField body="password" type="string" required>
+  New password
+</ParamField>
+
+<ParamField body="token" type="string" required>
+  Reset token from email
+</ParamField>
+
+### Response
+
+```json
+{
+  "message": "Password updated successfully"
+}
+```
+
+---
+
+## List Sessions
+
+<api>GET /api/v1/users/sessions/list</api>
+
+Get all active sessions for the user.
+
+### Authentication
+
+Required
+
+### Response
+
+Array of session objects:
+
+<ResponseField name="id" type="uuid">
+  Session ID
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  Session creation time
+</ResponseField>
+
+<ResponseField name="ip_address" type="string">
+  IP address
+</ResponseField>
+
+<ResponseField name="user_agent" type="string">
+  Browser/device information
+</ResponseField>
+
+<ResponseField name="last_seen" type="datetime">
+  Last activity time
+</ResponseField>
+
+---
+
+## Delete Session
+
+<api>DELETE /api/v1/users/sessions/{session_id}</api>
+
+Revoke a specific session.
+
+### Path Parameters
+
+<ParamField path="session_id" type="uuid" required>
+  Session ID to revoke
+</ParamField>
+
+### Authentication
+
+Required
+
+---
+
+## Get Current Session
+
+<api>GET /api/v1/users/session</api>
+
+Get details about the current session.
+
+### Authentication
+
+Required
+
+---
+
+## Delete Account
+
+<api>DELETE /api/v1/users/me</api>
+
+Permanently delete user account and all associated data.
+
+### Request Body
+
+<ParamField body="password" type="string" required>
+  User's password for confirmation
+</ParamField>
+
+### Authentication
+
+Required
+
+### Effects
+
+- Deletes all user sessions
+- Deletes all quizzes created by user
+- Removes public quizzes from search index
+- Permanently deletes user account
+
+---
+
+## Get User Avatar
+
+<api>GET /api/v1/users/avatar</api>
+
+Get the authenticated user's avatar (SVG format).
+
+### Authentication
+
+Required
+
+### Response
+
+Returns SVG image.
+
+---
+
+## Get Other User's Avatar
+
+<api>GET /api/v1/users/avatar/{user_id}</api>
+
+Get any user's avatar by their ID.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  User ID
+</ParamField>
+
+---
+
+## Generate API Key
+
+<api>POST /api/v1/users/api_keys</api>
+
+Generate a new API key for programmatic access.
+
+### Authentication
+
+Required
+
+### Response
+
+<ResponseField name="key" type="string">
+  48-character API key
+</ResponseField>
+
+---
+
+## List API Keys
+
+<api>GET /api/v1/users/api_keys</api>
+
+Get all API keys for the user.
+
+### Authentication
+
+Required
+
+### Response
+
+Array of API key objects containing only the `key` field.
+
+---
+
+## Delete API Key
+
+<api>DELETE /api/v1/users/api_keys</api>
+
+Revoke an API key.
+
+### Query Parameters
+
+<ParamField query="api_key" type="string" required>
+  API key to revoke
+</ParamField>
+
+### Authentication
+
+Required

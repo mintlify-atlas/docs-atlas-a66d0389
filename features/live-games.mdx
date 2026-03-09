@@ -1,0 +1,413 @@
+---
+title: Live Game Sessions
+description: Host real-time interactive quiz games with live players using ClassQuiz's game engine
+---
+
+## Overview
+
+ClassQuiz's live game feature allows you to host real-time quiz sessions where multiple players can join and compete simultaneously. Games use WebSocket connections for real-time interaction and Redis for session state management.
+
+## Starting a Game
+
+### Game Configuration
+
+To start a live game session (classquiz/routers/quiz.py:77):
+
+```python
+@router.post("/start/{quiz_id}")
+async def start_quiz(
+    quiz_id: str,
+    game_mode: str,
+    captcha_enabled: bool = True,
+    custom_field: str | None = None,
+    cqcs_enabled: bool = False,
+    randomize_answers: bool = False,
+    user: User = Depends(get_current_user),
+):
+```
+
+<ParamField path="quiz_id" type="UUID" required>
+  The unique identifier of the quiz to play
+</ParamField>
+
+<ParamField path="game_mode" type="string" required>
+  The game mode (e.g., "normal", "kahoot")
+</ParamField>
+
+<ParamField path="captcha_enabled" type="boolean" default="true">
+  Enable CAPTCHA verification for players joining
+</ParamField>
+
+<ParamField path="custom_field" type="string">
+  Optional custom field name to collect from players (e.g., "Student ID", "Class")
+</ParamField>
+
+<ParamField path="cqcs_enabled" type="boolean" default="false">
+  Enable ClassQuiz Controller Support for physical remote controls
+</ParamField>
+
+<ParamField path="randomize_answers" type="boolean" default="false">
+  Randomly shuffle answer order for each question
+</ParamField>
+
+### Game PIN Generation
+
+When a game starts, the system generates a unique 6-digit game PIN:
+
+```python
+game_pin = randint(100000, 999999)
+game = await redis.get(f"game:{game_pin}")
+while game is not None:
+    game_pin = randint(100000, 999999)
+    game = await redis.get(f"game:{game_pin}")
+```
+
+The PIN is guaranteed to be unique by checking Redis for collisions.
+
+## Game Data Structure
+
+### PlayGame Model
+
+The live game session is stored in Redis using the `PlayGame` model (classquiz/db/models.py:237):
+
+```python
+class PlayGame(BaseModel):
+    quiz_id: uuid.UUID | str
+    description: str
+    user_id: uuid.UUID  # Game host
+    title: str
+    questions: list[QuizQuestion]
+    game_id: uuid.UUID  # Unique game instance ID
+    game_pin: str  # 6-digit PIN
+    started: bool = False
+    captcha_enabled: bool = False
+    cover_image: str | None = None
+    game_mode: str | None = None
+    current_question: int = -1  # Index of current question (-1 = lobby)
+    background_color: str | None = None
+    background_image: str | None = None
+    custom_field: str | None = None
+    question_show: bool = False
+```
+
+<Info>
+Game data is stored in Redis with an 18,000 second (5 hour) expiration to automatically clean up inactive games.
+</Info>
+
+### Game Session State
+
+Parallel to game data, a `GameSession` tracks participants and answers:
+
+```python
+class GameSession(BaseModel):
+    admin: str  # Host socket ID
+    game_id: str
+    answers: list[GameAnswer1 | None]  # Answers for each question
+```
+
+Players are stored in a Redis set:
+```
+game_session:{game_pin}:players
+```
+
+## Player Join Flow
+
+### Joining a Game
+
+<Steps>
+  <Step title="Enter Game PIN">
+    Players navigate to `/play` and enter the 6-digit game PIN
+  </Step>
+  
+  <Step title="CAPTCHA Verification">
+    If enabled, players must complete CAPTCHA verification
+    
+    ```python
+    @router.get("/play/check_captcha/{game_pin}")
+    async def check_if_captcha_enabled(game_pin: str):
+        game = await redis.get(f"game:{game_pin}")
+        game = PlayGame.model_validate_json(game)
+        return CheckIfCaptchaEnabledResponse(
+            enabled=game.captcha_enabled,
+            game_mode=game.game_mode,
+            custom_field=game.custom_field
+        )
+    ```
+  </Step>
+  
+  <Step title="Enter Username">
+    Players enter their display name
+  </Step>
+  
+  <Step title="Custom Field (Optional)">
+    If configured, players must fill out the custom field (e.g., student ID)
+  </Step>
+  
+  <Step title="WebSocket Connection">
+    Player connects via Socket.IO and joins the game room
+    
+    ```javascript
+    socket.emit('join_game', {
+        username: username,
+        game_pin: game_pin
+    });
+    ```
+  </Step>
+</Steps>
+
+### Player Reconnection
+
+Players can reconnect if they lose connection (frontend/src/routes/play/+page.svelte:78):
+
+```javascript
+socket.on('connect', async () => {
+    const cookie_data = Cookies.get('joined_game');
+    if (!cookie_data) return;
+    
+    const data = JSON.parse(cookie_data);
+    socket.emit('rejoin_game', {
+        old_sid: data.sid,
+        username: data.username,
+        game_pin: data.game_pin
+    });
+});
+```
+
+## Game Lifecycle
+
+### 1. Lobby Phase
+
+- `current_question = -1`
+- `started = false`
+- Host sees player count updating in real-time
+- Players see waiting screen
+
+### 2. Game Start
+
+- Host clicks "Start Game"
+- `started = true`
+- Title screen shown to all players
+- WebSocket event: `start_game`
+
+### 3. Question Phase
+
+For each question:
+
+<Tabs>
+  <Tab title="Host View">
+    The host controls question flow using the admin interface:
+    
+    - Display question to players
+    - Start timer
+    - View live answer submissions
+    - End question manually or when timer expires
+    - Show correct answers and results
+  </Tab>
+  
+  <Tab title="Player View">
+    Players see:
+    
+    - Question text and optional image
+    - Available answers
+    - Countdown timer
+    - Submit answer before time runs out
+    - Results showing if they were correct
+    - Current score
+  </Tab>
+</Tabs>
+
+### 4. Results Phase
+
+After each question:
+
+- Correct answer highlighted
+- Answer distribution shown
+- Top players displayed
+- Score calculations based on correctness and speed
+
+### 5. Final Results
+
+- Leaderboard with final rankings
+- Export results option
+- Option to save results to database
+
+## Answer Submission & Scoring
+
+### Answer Data Structure
+
+When a player submits an answer (classquiz/db/models.py:319):
+
+```python
+class AnswerData(BaseModel):
+    username: str
+    answer: str  # The answer submitted
+    right: bool  # Whether answer is correct
+    time_taken: float  # Milliseconds to answer
+    score: int  # Points awarded
+```
+
+Answers are stored in Redis:
+```
+game_session:{game_pin}:{question_number}
+```
+
+### Score Calculation
+
+Scoring factors:
+- **Correctness**: Must be correct to receive points
+- **Speed**: Faster answers receive more points
+- **Question Time**: Points scale based on question time limit
+
+Player scores are tracked in Redis hash:
+```
+game_session:{game_pin}:player_scores
+```
+
+## Live API Endpoints
+
+The live API (classquiz/routers/live.py) provides real-time game data for integrations:
+
+### Get Live Game Data
+
+```http
+GET /api/v1/live/?game_pin={pin}&api_key={key}
+```
+
+Returns complete game state including:
+- Quiz metadata
+- Current question
+- All submitted answers
+- Player count
+
+### Get Player Count
+
+```http
+GET /api/v1/live/user_count?game_pin={pin}&api_key={key}
+```
+
+### Get Current Question
+
+```http
+GET /api/v1/live/get_question/now?game_pin={pin}&api_key={key}
+```
+
+### Set Question (Control Flow)
+
+```http
+POST /api/v1/live/set_question?game_pin={pin}&question_number={num}&api_key={key}
+```
+
+Allows external control of question flow via API.
+
+### Get Player Scores
+
+```http
+GET /api/v1/live/scores?game_pin={pin}&api_key={key}
+```
+
+Returns sorted array of players by score:
+
+```json
+[
+  {"username": "Alice", "score": 1250},
+  {"username": "Bob", "score": 980}
+]
+```
+
+## Custom Fields & Data Collection
+
+Custom fields allow you to collect additional information from players:
+
+```python
+custom_field = "Student ID"
+```
+
+Custom field responses are stored in Redis hash:
+```
+game:{game_pin}:players:custom_fields
+```
+
+This data is included when:
+- Viewing live game data
+- Exporting results
+- Saving results to database
+
+## Controller Support (CQCS)
+
+ClassQuiz supports physical remote controllers for player input:
+
+```python
+if cqcs_enabled:
+    code = generate_code(6)
+    await redis.set(f"game:cqc:code:{code}", game_pin, ex=3600)
+```
+
+Controllers connect using the generated code and can submit answers like regular players.
+
+## Game Modes
+
+Different game modes affect presentation:
+
+- **Normal**: Standard quiz flow
+- **Kahoot**: Kahoot-style results display
+
+The frontend adapts UI based on `game_mode` setting.
+
+## Answer Randomization
+
+When `randomize_answers` is enabled (classquiz/routers/quiz.py:106):
+
+```python
+if randomize_answers:
+    for question in quiz.questions:
+        if question["type"] == QuizQuestionType.RANGE:
+            continue
+        if question["type"] == QuizQuestionType.SLIDE:
+            continue
+        random.shuffle(question["answers"])
+```
+
+<Note>
+RANGE and SLIDE type questions are excluded from randomization as they have fixed answer structures.
+</Note>
+
+## Voting Results
+
+For VOTING type questions, get live voting results:
+
+```http
+GET /api/v1/live/voting?game_pin={pin}&api_key={key}
+```
+
+Returns answer distribution:
+```json
+{
+  "Option A": 15,
+  "Option B": 8,
+  "Option C": 22
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Test Connection" icon="wifi">
+    Test your internet connection before hosting large games
+  </Card>
+  
+  <Card title="Manage Player Count" icon="users">
+    Be aware of your server's capacity for concurrent players
+  </Card>
+  
+  <Card title="Use Custom Fields" icon="input-text">
+    Collect student IDs or class names for better result tracking
+  </Card>
+  
+  <Card title="Enable CAPTCHA" icon="shield-check">
+    Use CAPTCHA for public games to prevent bot spam
+  </Card>
+</CardGroup>
+
+<Warning>
+Games automatically expire after 5 hours. Save results before the game expires if you need them long-term.
+</Warning>

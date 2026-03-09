@@ -1,0 +1,413 @@
+---
+title: OAuth Configuration
+description: Configure Google, GitHub, and custom OpenID Connect authentication providers
+---
+
+ClassQuiz supports OAuth authentication through Google, GitHub, and custom OpenID Connect providers. This allows users to sign in using their existing accounts from these services.
+
+## Overview
+
+OAuth authentication is optional and can be enabled independently for each provider. Users can still register and log in with email/password even if OAuth is not configured.
+
+<Note>
+  All OAuth providers are optional. You can enable one, all, or none of them based on your needs.
+</Note>
+
+## Google OAuth
+
+Allow users to sign in with their Google accounts.
+
+### Configuration
+
+<ParamField path="GOOGLE_CLIENT_ID" type="string" optional>
+  Google OAuth 2.0 Client ID.
+  
+  **Example:** `123456789-abc123def456.apps.googleusercontent.com`
+</ParamField>
+
+<ParamField path="GOOGLE_CLIENT_SECRET" type="string" optional>
+  Google OAuth 2.0 Client Secret.
+  
+  <Warning>Keep this secret secure and never commit it to version control</Warning>
+</ParamField>
+
+### Setup Steps
+
+<Steps>
+  <Step title="Create Google Cloud Project">
+    1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+    2. Create a new project or select an existing one
+    3. Enable the Google+ API (now part of Google Identity)
+  </Step>
+  
+  <Step title="Configure OAuth Consent Screen">
+    1. Navigate to APIs & Services → OAuth consent screen
+    2. Choose "External" user type (or "Internal" for Google Workspace)
+    3. Fill in:
+       - App name: "ClassQuiz"
+       - User support email: Your email
+       - Developer contact: Your email
+    4. Add scopes: `openid`, `email`, `profile`
+    5. Save and continue
+  </Step>
+  
+  <Step title="Create OAuth Credentials">
+    1. Go to APIs & Services → Credentials
+    2. Click "Create Credentials" → "OAuth client ID"
+    3. Application type: "Web application"
+    4. Name: "ClassQuiz"
+    5. Authorized redirect URIs:
+       ```
+       https://your-domain.com/api/v1/users/oauth/google/auth
+       ```
+    6. Click "Create"
+    7. Copy the Client ID and Client Secret
+  </Step>
+  
+  <Step title="Configure ClassQuiz">
+    Add the credentials to your environment variables:
+    ```bash
+    GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+    GOOGLE_CLIENT_SECRET=your-client-secret
+    ```
+  </Step>
+</Steps>
+
+### Google OAuth Scopes
+
+ClassQuiz requests the following OAuth scopes:
+- `openid` - OpenID Connect authentication
+- `email` - User's email address
+- `profile` - User's basic profile information (name, avatar)
+
+## GitHub OAuth
+
+Allow users to sign in with their GitHub accounts.
+
+### Configuration
+
+<ParamField path="GITHUB_CLIENT_ID" type="string" optional>
+  GitHub OAuth App Client ID.
+  
+  **Example:** `Iv1.1234567890abcdef`
+</ParamField>
+
+<ParamField path="GITHUB_CLIENT_SECRET" type="string" optional>
+  GitHub OAuth App Client Secret.
+  
+  <Warning>Keep this secret secure and never commit it to version control</Warning>
+</ParamField>
+
+### Setup Steps
+
+<Steps>
+  <Step title="Create GitHub OAuth App">
+    1. Go to GitHub Settings → Developer settings → [OAuth Apps](https://github.com/settings/developers)
+    2. Click "New OAuth App"
+  </Step>
+  
+  <Step title="Configure OAuth App">
+    Fill in the following details:
+    - **Application name:** ClassQuiz
+    - **Homepage URL:** `https://your-domain.com`
+    - **Authorization callback URL:** `https://your-domain.com/api/v1/users/oauth/github/auth`
+    - **Application description:** (optional)
+    
+    Click "Register application"
+  </Step>
+  
+  <Step title="Generate Client Secret">
+    1. On the OAuth App page, click "Generate a new client secret"
+    2. Copy both the Client ID and Client Secret immediately
+    
+    <Warning>The client secret is only shown once. Save it securely!</Warning>
+  </Step>
+  
+  <Step title="Configure ClassQuiz">
+    Add the credentials to your environment variables:
+    ```bash
+    GITHUB_CLIENT_ID=Iv1.1234567890abcdef
+    GITHUB_CLIENT_SECRET=your-client-secret
+    ```
+  </Step>
+</Steps>
+
+### GitHub OAuth Scopes
+
+ClassQuiz requests the following OAuth scopes:
+- `read:user` - Read user profile information
+- `user:email` - Access user's email address
+
+<Note>
+  ClassQuiz requires users to have a public email address on their GitHub account. Users without a public email will see an error during authentication.
+</Note>
+
+## Custom OpenID Connect Provider
+
+Connect to any OpenID Connect (OIDC) compatible identity provider such as:
+- Keycloak
+- Auth0
+- Okta
+- Azure AD
+- Any other OIDC-compliant provider
+
+### Configuration
+
+<ParamField path="CUSTOM_OPENID_PROVIDER__CLIENT_ID" type="string" optional>
+  Client ID for your OpenID Connect provider.
+  
+  <Note>Note the double underscore (`__`) in the variable name for nested configuration</Note>
+</ParamField>
+
+<ParamField path="CUSTOM_OPENID_PROVIDER__CLIENT_SECRET" type="string" optional>
+  Client secret for your OpenID Connect provider.
+</ParamField>
+
+<ParamField path="CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL" type="string" optional>
+  URL to the OpenID Connect discovery document.
+  
+  **Format:** `https://your-provider.com/.well-known/openid-configuration`
+  
+  **Examples:**
+  - Keycloak: `https://keycloak.example.com/realms/myrealm/.well-known/openid-configuration`
+  - Auth0: `https://your-tenant.auth0.com/.well-known/openid-configuration`
+  - Azure AD: `https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration`
+</ParamField>
+
+<ParamField path="CUSTOM_OPENID_PROVIDER__SCOPES" type="string" default="openid email profile">
+  Space-separated list of OAuth scopes to request.
+  
+  **Default:** `openid email profile`
+</ParamField>
+
+### Setup Steps
+
+<Steps>
+  <Step title="Configure your OIDC provider">
+    1. Create a new OAuth/OIDC client in your identity provider
+    2. Set the redirect URI to: `https://your-domain.com/api/v1/users/oauth/custom/auth`
+    3. Note the client ID and client secret
+    4. Find the OpenID discovery URL (usually ends with `/.well-known/openid-configuration`)
+  </Step>
+  
+  <Step title="Configure ClassQuiz">
+    Add the credentials to your environment variables:
+    ```bash
+    CUSTOM_OPENID_PROVIDER__CLIENT_ID=your-client-id
+    CUSTOM_OPENID_PROVIDER__CLIENT_SECRET=your-client-secret
+    CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL=https://your-provider.com/.well-known/openid-configuration
+    CUSTOM_OPENID_PROVIDER__SCOPES="openid email profile"
+    ```
+  </Step>
+  
+  <Step title="Test authentication">
+    Navigate to your ClassQuiz instance and try logging in with the custom provider.
+  </Step>
+</Steps>
+
+### Custom Provider Examples
+
+<CodeGroup>
+```bash Keycloak
+CUSTOM_OPENID_PROVIDER__CLIENT_ID=classquiz-client
+CUSTOM_OPENID_PROVIDER__CLIENT_SECRET=your-secret
+CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL=https://keycloak.example.com/realms/myrealm/.well-known/openid-configuration
+CUSTOM_OPENID_PROVIDER__SCOPES="openid email profile"
+```
+
+```bash Auth0
+CUSTOM_OPENID_PROVIDER__CLIENT_ID=your-auth0-client-id
+CUSTOM_OPENID_PROVIDER__CLIENT_SECRET=your-auth0-secret
+CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL=https://your-tenant.auth0.com/.well-known/openid-configuration
+CUSTOM_OPENID_PROVIDER__SCOPES="openid email profile"
+```
+
+```bash Azure AD
+CUSTOM_OPENID_PROVIDER__CLIENT_ID=your-application-id
+CUSTOM_OPENID_PROVIDER__CLIENT_SECRET=your-client-secret
+CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL=https://login.microsoftonline.com/your-tenant-id/v2.0/.well-known/openid-configuration
+CUSTOM_OPENID_PROVIDER__SCOPES="openid email profile"
+```
+
+```bash Okta
+CUSTOM_OPENID_PROVIDER__CLIENT_ID=your-okta-client-id
+CUSTOM_OPENID_PROVIDER__CLIENT_SECRET=your-okta-secret
+CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL=https://your-domain.okta.com/.well-known/openid-configuration
+CUSTOM_OPENID_PROVIDER__SCOPES="openid email profile"
+```
+</CodeGroup>
+
+## Complete OAuth Configuration Example
+
+<CodeGroup>
+```bash All Providers Enabled
+# Google OAuth
+GOOGLE_CLIENT_ID=123456789-abc123.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-abc123def456
+
+# GitHub OAuth
+GITHUB_CLIENT_ID=Iv1.1234567890abcdef
+GITHUB_CLIENT_SECRET=github-secret-here
+
+# Custom OpenID
+CUSTOM_OPENID_PROVIDER__CLIENT_ID=custom-client-id
+CUSTOM_OPENID_PROVIDER__CLIENT_SECRET=custom-secret
+CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL=https://auth.example.com/.well-known/openid-configuration
+CUSTOM_OPENID_PROVIDER__SCOPES="openid email profile"
+```
+
+```bash Only Google
+# Google OAuth only
+GOOGLE_CLIENT_ID=123456789-abc123.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-abc123def456
+
+# GitHub and Custom - leave unset
+```
+
+```bash Docker Compose
+services:
+  api:
+    environment:
+      # Google OAuth
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET}"
+      
+      # GitHub OAuth
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET}"
+      
+      # Custom OpenID
+      CUSTOM_OPENID_PROVIDER__CLIENT_ID: "${CUSTOM_OPENID_PROVIDER__CLIENT_ID}"
+      CUSTOM_OPENID_PROVIDER__CLIENT_SECRET: "${CUSTOM_OPENID_PROVIDER__CLIENT_SECRET}"
+      CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL: "${CUSTOM_OPENID_PROVIDER__SERVER_METADATA_URL}"
+```
+</CodeGroup>
+
+## OAuth Redirect URLs
+
+When configuring OAuth providers, use these redirect URLs:
+
+| Provider | Redirect URL |
+|----------|-------------|
+| Google   | `https://your-domain.com/api/v1/users/oauth/google/auth` |
+| GitHub   | `https://your-domain.com/api/v1/users/oauth/github/auth` |
+| Custom   | `https://your-domain.com/api/v1/users/oauth/custom/auth` |
+
+<Warning>
+  Replace `your-domain.com` with your actual ROOT_ADDRESS domain. The redirect URLs must match exactly, including the protocol (https://).
+</Warning>
+
+## How OAuth Authentication Works
+
+<Steps>
+  <Step title="User initiates login">
+    User clicks on "Sign in with Google/GitHub/Custom" button on the login page.
+  </Step>
+  
+  <Step title="Redirect to provider">
+    ClassQuiz redirects the user to the OAuth provider's authorization page.
+  </Step>
+  
+  <Step title="User authorizes">
+    User logs in to the OAuth provider and authorizes ClassQuiz to access their profile information.
+  </Step>
+  
+  <Step title="Provider redirects back">
+    OAuth provider redirects back to ClassQuiz with an authorization code.
+  </Step>
+  
+  <Step title="Token exchange">
+    ClassQuiz exchanges the authorization code for an access token and retrieves user information.
+  </Step>
+  
+  <Step title="Account creation or login">
+    - If the user doesn't exist, a new account is created
+    - If the user exists, they are logged in
+    - User is redirected to the application
+  </Step>
+</Steps>
+
+## User Account Linking
+
+When a user signs in with OAuth:
+- A new account is created if the email doesn't exist
+- If an account with the same email exists but uses a different auth method, registration will fail
+- Each OAuth provider creates a separate auth type (`GOOGLE`, `GITHUB`, `CUSTOM`)
+- Users cannot link multiple OAuth providers to the same account
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="OAuth provider not showing on login page">
+    Check that both CLIENT_ID and CLIENT_SECRET are set for the provider. ClassQuiz only displays OAuth buttons for fully configured providers.
+    
+    Verify configuration:
+    ```bash
+    docker-compose exec api env | grep -E "GOOGLE|GITHUB|CUSTOM_OPENID"
+    ```
+  </Accordion>
+  
+  <Accordion title="Redirect URI mismatch">
+    Ensure the redirect URI configured in your OAuth provider exactly matches the format:
+    ```
+    https://your-domain.com/api/v1/users/oauth/{provider}/auth
+    ```
+    
+    Common issues:
+    - Missing or wrong protocol (http vs https)
+    - Trailing slash
+    - Wrong domain or ROOT_ADDRESS
+  </Accordion>
+  
+  <Accordion title="User already exists error">
+    This occurs when:
+    - A user with the same email is registered with a different auth method
+    - Trying to use a different OAuth provider with an email that's already linked
+    
+    Solution: Users must log in with their original authentication method.
+  </Accordion>
+  
+  <Accordion title="Custom OpenID provider not working">
+    Verify:
+    - The discovery URL returns valid JSON
+    - Your provider supports the required scopes
+    - The CLIENT_ID and CLIENT_SECRET are correct
+    - The redirect URI is registered in your provider
+    
+    Test the discovery URL:
+    ```bash
+    curl https://your-provider.com/.well-known/openid-configuration
+    ```
+  </Accordion>
+  
+  <Accordion title="Email not provided by GitHub">
+    GitHub users must have a public email address. To fix:
+    1. Go to GitHub Settings → Emails
+    2. Ensure at least one email is public
+    3. Or configure your GitHub OAuth App to request private emails
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<Warning>
+  Always use HTTPS in production. OAuth providers will reject redirect URIs using plain HTTP.
+</Warning>
+
+- Store OAuth secrets securely using environment variables or secrets management
+- Never commit CLIENT_SECRET values to version control
+- Regularly rotate OAuth credentials
+- Use the principle of least privilege when requesting OAuth scopes
+- Monitor OAuth login logs for suspicious activity
+- Implement rate limiting on OAuth endpoints
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Email Configuration" icon="envelope" href="/configuration/email">
+    Configure SMTP for email notifications
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/configuration/environment-variables">
+    View all configuration options
+  </Card>
+</CardGroup>

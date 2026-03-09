@@ -1,0 +1,402 @@
+---
+title: 'Quiz Endpoints'
+description: 'Create, manage, and interact with quizzes'
+---
+
+## Get Quiz by ID
+
+<api>GET /api/v1/quiz/get/{quiz_id}</api>
+
+Retrieve a quiz by its ID. Returns the quiz if it's public or belongs to the authenticated user.
+
+### Path Parameters
+
+<ParamField path="quiz_id" type="string" required>
+  UUID of the quiz to retrieve
+</ParamField>
+
+### Authentication
+
+Optional - If authenticated, can access own quizzes. If not authenticated, only public quizzes are accessible.
+
+### Response
+
+<ResponseField name="id" type="uuid">
+  Quiz ID
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Quiz title
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Quiz description
+</ResponseField>
+
+<ResponseField name="questions" type="array">
+  Array of quiz questions
+</ResponseField>
+
+<ResponseField name="public" type="boolean">
+  Whether the quiz is public
+</ResponseField>
+
+<ResponseField name="cover_image" type="string">
+  URL of the cover image
+</ResponseField>
+
+<ResponseField name="background_color" type="string">
+  Background color hex code
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "title": "Science Quiz",
+  "description": "Test your science knowledge",
+  "public": true,
+  "questions": [...],
+  "cover_image": "https://...",
+  "background_color": "#4A90E2"
+}
+```
+
+---
+
+## Get Public Quiz
+
+<api>GET /api/v1/quiz/get/public/{quiz_id}</api>
+
+Retrieve a public quiz with additional metadata including user information, likes, dislikes, views, and plays.
+
+### Path Parameters
+
+<ParamField path="quiz_id" type="uuid" required>
+  UUID of the quiz to retrieve
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="uuid">
+  Quiz ID
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Quiz title
+</ResponseField>
+
+<ResponseField name="user_id" type="object">
+  User information
+  - `username` (string): Username of quiz creator
+  - `id` (uuid): User ID of quiz creator
+</ResponseField>
+
+<ResponseField name="likes" type="integer">
+  Number of likes
+</ResponseField>
+
+<ResponseField name="dislikes" type="integer">
+  Number of dislikes
+</ResponseField>
+
+<ResponseField name="views" type="integer">
+  Number of views
+</ResponseField>
+
+<ResponseField name="plays" type="integer">
+  Number of times the quiz has been played
+</ResponseField>
+
+---
+
+## Start Quiz Game
+
+<api>POST /api/v1/quiz/start/{quiz_id}</api>
+
+Start a new quiz game session. Creates a game with a unique game PIN and returns game configuration.
+
+### Path Parameters
+
+<ParamField path="quiz_id" type="string" required>
+  UUID of the quiz to start
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="game_mode" type="string" required>
+  Game mode (e.g., "normal", "kahoot")
+</ParamField>
+
+<ParamField query="captcha_enabled" type="boolean" default="true">
+  Enable CAPTCHA for player joins
+</ParamField>
+
+<ParamField query="custom_field" type="string">
+  Custom field for collecting player data
+</ParamField>
+
+<ParamField query="cqcs_enabled" type="boolean" default="false">
+  Enable ClassQuiz Controller System
+</ParamField>
+
+<ParamField query="randomize_answers" type="boolean" default="false">
+  Randomize answer order for each question
+</ParamField>
+
+### Authentication
+
+Required - Must be authenticated as the quiz owner or quiz must be public.
+
+### Response
+
+<ResponseField name="game_pin" type="string">
+  6-digit game PIN for players to join
+</ResponseField>
+
+<ResponseField name="game_id" type="uuid">
+  Unique game session ID
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Quiz title
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Quiz description
+</ResponseField>
+
+<ResponseField name="cqc_code" type="string">
+  ClassQuiz Controller code (if cqcs_enabled)
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "game_pin": "123456",
+  "game_id": "789e4567-e89b-12d3-a456-426614174000",
+  "title": "Science Quiz",
+  "description": "Test your science knowledge",
+  "game_mode": "normal",
+  "captcha_enabled": true,
+  "cqc_code": "ABC123"
+}
+```
+
+---
+
+## Check CAPTCHA Status
+
+<api>GET /api/v1/quiz/play/check_captcha/{game_pin}</api>
+
+Check if CAPTCHA is enabled for a game and get game configuration.
+
+### Path Parameters
+
+<ParamField path="game_pin" type="string" required>
+  6-digit game PIN
+</ParamField>
+
+### Response
+
+<ResponseField name="enabled" type="boolean">
+  Whether CAPTCHA is enabled
+</ResponseField>
+
+<ResponseField name="game_mode" type="string">
+  Game mode
+</ResponseField>
+
+<ResponseField name="custom_field" type="string">
+  Custom field name if configured
+</ResponseField>
+
+---
+
+## List User Quizzes
+
+<api>GET /api/v1/quiz/list</api>
+
+Get paginated list of quizzes created by the authenticated user.
+
+### Query Parameters
+
+<ParamField query="page_size" type="integer" default="10">
+  Number of quizzes per page
+</ParamField>
+
+<ParamField query="page" type="integer" default="1">
+  Page number (1-indexed)
+</ParamField>
+
+### Authentication
+
+Required
+
+### Response
+
+Array of quiz objects ordered by `updated_at` (most recent first).
+
+---
+
+## Delete Quiz
+
+<api>DELETE /api/v1/quiz/delete/{quiz_id}</api>
+
+Delete a quiz and associated images.
+
+### Path Parameters
+
+<ParamField path="quiz_id" type="string" required>
+  UUID of the quiz to delete
+</ParamField>
+
+### Authentication
+
+Required - Must be the quiz owner
+
+### Response
+
+Returns the deleted quiz object.
+
+---
+
+## Import Quiz from Kahoot
+
+<api>POST /api/v1/quiz/import/{quiz_id}</api>
+
+Import a quiz from Kahoot by its ID.
+
+### Path Parameters
+
+<ParamField path="quiz_id" type="string" required>
+  Kahoot quiz ID to import
+</ParamField>
+
+### Authentication
+
+Required
+
+### Response
+
+Returns the imported quiz object.
+
+### Error Codes
+
+- `409`: Storage limit reached
+- `400`: Unsupported quiz format
+
+---
+
+## Export Quiz Data
+
+<api>GET /api/v1/quiz/export_data/{export_token}</api>
+
+Export quiz game results as an Excel spreadsheet.
+
+### Path Parameters
+
+<ParamField path="export_token" type="string" required>
+  Temporary export token
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="game_pin" type="string" required>
+  Game PIN for the session to export
+</ParamField>
+
+### Response
+
+Returns an Excel file (.xlsx) with game results including:
+- Player responses
+- Custom field data
+- Player scores
+- Question details
+
+---
+
+## Import from Excel
+
+<api>POST /api/v1/quiz/excel-import</api>
+
+Import a quiz from an Excel file.
+
+### Request Body
+
+<ParamField body="file" type="file" required>
+  Excel file (.xlsx) containing quiz data
+</ParamField>
+
+### Authentication
+
+Required
+
+### Response
+
+Returns the created quiz object.
+
+---
+
+## Question Types
+
+### ABCD Question
+
+```json
+{
+  "question": "What is 2+2?",
+  "time": "30",
+  "type": "ABCD",
+  "answers": [
+    {"answer": "3", "right": false, "color": "#FF0000"},
+    {"answer": "4", "right": true, "color": "#00FF00"},
+    {"answer": "5", "right": false, "color": "#0000FF"}
+  ],
+  "image": "https://..."
+}
+```
+
+### Range Question
+
+```json
+{
+  "question": "Estimate the year",
+  "time": "30",
+  "type": "RANGE",
+  "answers": {
+    "min": 1900,
+    "max": 2000,
+    "min_correct": 1940,
+    "max_correct": 1950
+  }
+}
+```
+
+### Voting Question
+
+```json
+{
+  "question": "Which is your favorite?",
+  "time": "30",
+  "type": "VOTING",
+  "answers": [
+    {"answer": "Option A", "color": "#FF0000"},
+    {"answer": "Option B", "color": "#00FF00"}
+  ]
+}
+```
+
+### Text Question
+
+```json
+{
+  "question": "What is the capital?",
+  "time": "30",
+  "type": "TEXT",
+  "answers": [
+    {"answer": "Paris", "case_sensitive": false}
+  ]
+}
+```

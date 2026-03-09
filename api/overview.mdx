@@ -1,0 +1,236 @@
+---
+title: API Overview
+description: Learn about the ClassQuiz REST API architecture, endpoints, and response formats
+---
+
+ClassQuiz provides a comprehensive RESTful API built with FastAPI that powers the quiz platform. The API follows standard HTTP conventions and returns JSON-formatted responses.
+
+## Base URL
+
+All API endpoints are prefixed with `/api/v1/`:
+
+```
+{root_address}/api/v1/
+```
+
+The root address is configured in your ClassQuiz instance settings. For local development, this is typically `http://127.0.0.1:8000`.
+
+## API Documentation
+
+ClassQuiz automatically generates interactive API documentation using FastAPI:
+
+- **Swagger UI**: Available at `/api/docs`
+- **ReDoc**: Disabled by default (see `classquiz/__init__.py:44`)
+
+<Note>
+  The interactive documentation at `/api/docs` provides a complete, up-to-date reference of all available endpoints with request/response schemas and the ability to test API calls directly.
+</Note>
+
+## Available Endpoints
+
+The API is organized into the following endpoint groups:
+
+### Authentication & Users
+- `/api/v1/login` - User authentication and login flows
+- `/api/v1/users` - User management and profiles
+
+### Quiz Management
+- `/api/v1/quiz` - Create, read, update, and delete quizzes
+- `/api/v1/editor` - Quiz editing functionality
+- `/api/v1/live` - Live quiz sessions
+- `/api/v1/eximport` - Import and export quizzes
+
+### Game Sessions
+- `/api/v1/results` - Game results and analytics
+- `/api/v1/stats` - Statistical data
+
+### Content & Search
+- `/api/v1/search` - Search functionality (powered by MeiliSearch)
+- `/api/v1/community` - Community features and public quizzes
+- `/api/v1/storage` - File upload and storage management
+- `/api/v1/pixabay` - Pixabay image integration
+
+### QuizTivity
+- `/api/v1/quiztivity` - QuizTivity interactive content
+
+### Administration
+- `/api/v1/admin` - Administrative functions
+- `/api/v1/moderation` - Content moderation
+- `/api/v1/remote` - Remote access features
+- `/api/v1/box-controller` - Hardware controller integration
+
+### Utilities
+- `/api/v1/utils` - Utility endpoints
+- `/api/v1/avatar` - Avatar generation
+- `/api/v1/sitemap` - Sitemap generation
+
+## Response Format
+
+### Success Responses
+
+Successful responses return JSON data with appropriate HTTP status codes:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "Sample Quiz",
+  "description": "A sample quiz description",
+  "public": true
+}
+```
+
+Common success status codes:
+- `200 OK` - Request succeeded
+- `201 Created` - Resource created successfully
+- `202 Accepted` - Request accepted (used in multi-step authentication)
+- `204 No Content` - Success with no response body
+
+### Error Responses
+
+Errors return JSON objects with a `detail` field explaining the error:
+
+```json
+{
+  "detail": "quiz not found"
+}
+```
+
+<Note>
+  All error responses include a descriptive `detail` field. Some authentication errors may also include a `headers` field with additional information.
+</Note>
+
+## Common Error Codes
+
+ClassQuiz uses standard HTTP status codes to indicate API errors:
+
+### 400 Bad Request
+The request was invalid or malformed.
+
+**Common causes:**
+- Invalid UUID format: `"badly formed quiz id"` (see `quiz.py:37`)
+- Missing required parameters
+- Invalid parameter values: `"One parameter-value doesn't exist."`
+
+**Example:**
+```json
+{
+  "detail": "badly formed quiz id"
+}
+```
+
+### 401 Unauthorized
+Authentication failed or token is invalid.
+
+**Common causes:**
+- Missing or invalid access token: `"Not authenticated"` (see `auth.py:58`)
+- Invalid credentials: `"Could not validate credentials"` (see `auth.py:112`)
+- Expired JWT token
+- Wrong password or authentication data: `"wrong credentials"`
+
+**Example:**
+```json
+{
+  "detail": "Could not validate credentials",
+  "headers": {
+    "WWW-Authenticate": "Bearer"
+  }
+}
+```
+
+### 404 Not Found
+The requested resource does not exist.
+
+**Common causes:**
+- Quiz not found
+- User not found
+- Game session not found
+- Resource has been deleted
+
+**Example:**
+```json
+{
+  "detail": "quiz not found"
+}
+```
+
+### 409 Conflict
+The request conflicts with the current state.
+
+**Common causes:**
+- Username already exists: `"Username already exists"`
+- Duplicate rating submission: `"Rating already submitted"`
+- Game already started: `"Game started already"`
+
+**Example:**
+```json
+{
+  "detail": "Username already exists"
+}
+```
+
+### 500 Internal Server Error
+An unexpected error occurred on the server.
+
+<Note>
+  If Sentry is configured (via `SENTRY_DSN`), all server errors are automatically reported for monitoring and debugging (see `__init__.py:48-57`).
+</Note>
+
+## Data Types
+
+The API uses the following common data types:
+
+### UUIDs
+Resource identifiers use UUID v4 format:
+```
+550e8400-e29b-41d4-a716-446655440000
+```
+
+### Timestamps
+Dates and times are in ISO 8601 format (UTC):
+```json
+"created_at": "2023-01-15T10:30:00"
+```
+
+### Enums
+Some fields use enumerated values:
+
+**UserAuthTypes** (see `models.py:30-34`):
+- `LOCAL` - Local authentication
+- `GOOGLE` - Google OAuth
+- `GITHUB` - GitHub OAuth
+- `CUSTOM` - Custom OpenID provider
+
+**QuizQuestionType** (see `models.py:131-138`):
+- `ABCD` - Multiple choice
+- `RANGE` - Numeric range
+- `VOTING` - Voting question
+- `SLIDE` - Presentation slide
+- `TEXT` - Text answer
+- `ORDER` - Ordering question
+- `CHECK` - Checkbox question
+
+## Rate Limiting
+
+ClassQuiz does not implement built-in rate limiting at the API level. Consider implementing rate limiting at the reverse proxy level (e.g., nginx) for production deployments.
+
+## Versioning
+
+The API is currently at version 1 (v1). All endpoints are prefixed with `/api/v1/`. Future breaking changes will be introduced under a new version prefix.
+
+## WebSocket Support
+
+ClassQuiz includes Socket.IO support for real-time features mounted at the root path:
+
+```python
+app.mount("/", ASGIApp(sio))
+```
+
+This enables real-time quiz gameplay, live updates, and controller integration.
+
+## Content-Type
+
+All requests and responses use `application/json` content type unless otherwise specified (e.g., file uploads use `multipart/form-data`).
+
+## Cross-Origin Requests (CORS)
+
+CORS configuration depends on your deployment settings. Ensure your frontend origin is properly configured in production environments.

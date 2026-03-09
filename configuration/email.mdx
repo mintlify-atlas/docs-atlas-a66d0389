@@ -1,0 +1,308 @@
+---
+title: Email Configuration
+description: Configure SMTP settings for sending verification and password reset emails
+---
+
+ClassQuiz uses SMTP to send email verification links and password reset emails to users. This guide covers how to configure email settings.
+
+## Email Settings
+
+All email configuration is done through environment variables. These settings are required unless you disable email verification.
+
+<ParamField path="MAIL_SERVER" type="string" required>
+  SMTP server hostname.
+  
+  **Examples:**
+  - Gmail: `smtp.gmail.com`
+  - Outlook: `smtp.office365.com`
+  - SendGrid: `smtp.sendgrid.net`
+  - Mailgun: `smtp.mailgun.org`
+  
+  **Example:** `smtp.gmail.com`
+</ParamField>
+
+<ParamField path="MAIL_PORT" type="integer" required>
+  SMTP server port. Common ports:
+  - `587` - STARTTLS (recommended)
+  - `465` - SSL/TLS
+  - `25` - Plain (not recommended)
+  
+  **Default:** `587`
+</ParamField>
+
+<ParamField path="MAIL_USERNAME" type="string" required>
+  Username for SMTP authentication. Usually your email address.
+  
+  **Example:** `noreply@example.com`
+</ParamField>
+
+<ParamField path="MAIL_PASSWORD" type="string" required>
+  Password for SMTP authentication.
+  
+  <Warning>
+    For Gmail, you must use an [App Password](https://support.google.com/accounts/answer/185833), not your regular account password.
+  </Warning>
+  
+  **Example:** `your-app-password`
+</ParamField>
+
+<ParamField path="MAIL_ADDRESS" type="string" required>
+  Email address to use in the "From" field of sent emails.
+  
+  **Example:** `noreply@classquiz.example.com`
+</ParamField>
+
+## Email Verification Control
+
+<ParamField path="SKIP_EMAIL_VERIFICATION" type="boolean" default="false">
+  Whether to skip email verification for new user registrations.
+  
+  When set to `True`:
+  - Users can log in immediately after registration
+  - No verification emails are sent
+  - Email fields are still validated but not verified
+  
+  When set to `False`:
+  - Users must click a verification link sent to their email
+  - Users cannot log in until their email is verified
+  
+  **Values:** `True` or `False`
+</ParamField>
+
+<Tip>
+  During development or testing, you may want to set `SKIP_EMAIL_VERIFICATION=True` to avoid needing a working SMTP server.
+</Tip>
+
+## Configuration Examples
+
+<CodeGroup>
+```bash Gmail
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-app-password
+MAIL_ADDRESS=your-email@gmail.com
+SKIP_EMAIL_VERIFICATION=False
+```
+
+```bash Outlook/Office 365
+MAIL_SERVER=smtp.office365.com
+MAIL_PORT=587
+MAIL_USERNAME=your-email@outlook.com
+MAIL_PASSWORD=your-password
+MAIL_ADDRESS=your-email@outlook.com
+SKIP_EMAIL_VERIFICATION=False
+```
+
+```bash SendGrid
+MAIL_SERVER=smtp.sendgrid.net
+MAIL_PORT=587
+MAIL_USERNAME=apikey
+MAIL_PASSWORD=your-sendgrid-api-key
+MAIL_ADDRESS=noreply@yourdomain.com
+SKIP_EMAIL_VERIFICATION=False
+```
+
+```bash Mailgun
+MAIL_SERVER=smtp.mailgun.org
+MAIL_PORT=587
+MAIL_USERNAME=postmaster@yourdomain.mailgun.org
+MAIL_PASSWORD=your-mailgun-password
+MAIL_ADDRESS=noreply@yourdomain.com
+SKIP_EMAIL_VERIFICATION=False
+```
+
+```bash Development (No Email)
+SKIP_EMAIL_VERIFICATION=True
+# Other MAIL_* variables can be left unset
+```
+</CodeGroup>
+
+## Email Templates
+
+ClassQuiz sends two types of emails:
+
+### Registration Verification Email
+
+Sent when a new user registers. Contains a verification link that expires based on your token settings.
+
+**Template location:** `classquiz/emails/templates/register.jinja2`
+
+**Variables available:**
+- `base_url` - Your ROOT_ADDRESS
+- `token` - Verification token
+
+### Password Reset Email
+
+Sent when a user requests a password reset. The reset link expires after 1 hour (3600 seconds).
+
+**Template location:** `classquiz/emails/templates/forgotten_password.jinja2`
+
+**Variables available:**
+- `base_url` - Your ROOT_ADDRESS
+- `token` - Password reset token
+
+<Note>
+  Email templates use Jinja2 templating. You can customize these templates by modifying the files in the `classquiz/emails/templates/` directory.
+</Note>
+
+## Provider-Specific Setup
+
+<AccordionGroup>
+  <Accordion title="Gmail Setup">
+    <Steps>
+      <Step title="Enable 2-Factor Authentication">
+        You must enable 2FA on your Google account to use App Passwords.
+      </Step>
+      
+      <Step title="Generate App Password">
+        1. Go to [Google Account Settings](https://myaccount.google.com/)
+        2. Navigate to Security → 2-Step Verification → App passwords
+        3. Select "Mail" and "Other (Custom name)"
+        4. Copy the 16-character password
+      </Step>
+      
+      <Step title="Configure ClassQuiz">
+        ```bash
+        MAIL_SERVER=smtp.gmail.com
+        MAIL_PORT=587
+        MAIL_USERNAME=your-email@gmail.com
+        MAIL_PASSWORD=xxxx-xxxx-xxxx-xxxx  # App password
+        MAIL_ADDRESS=your-email@gmail.com
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+  
+  <Accordion title="SendGrid Setup">
+    <Steps>
+      <Step title="Create API Key">
+        1. Log in to [SendGrid](https://sendgrid.com/)
+        2. Go to Settings → API Keys
+        3. Create a new API key with "Mail Send" permissions
+      </Step>
+      
+      <Step title="Verify Domain (Optional)">
+        For production, verify your domain in SendGrid to improve deliverability.
+      </Step>
+      
+      <Step title="Configure ClassQuiz">
+        ```bash
+        MAIL_SERVER=smtp.sendgrid.net
+        MAIL_PORT=587
+        MAIL_USERNAME=apikey  # Literally the word "apikey"
+        MAIL_PASSWORD=SG.xxxxx  # Your actual API key
+        MAIL_ADDRESS=noreply@yourdomain.com
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+  
+  <Accordion title="Custom SMTP Server">
+    For self-hosted or custom SMTP servers:
+    
+    1. Ensure your SMTP server supports STARTTLS on port 587
+    2. Create a dedicated email account for ClassQuiz
+    3. Configure firewall rules to allow outbound connections on port 587
+    4. Test with:
+    ```bash
+    openssl s_client -starttls smtp -connect smtp.yourserver.com:587
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Testing Email Configuration
+
+After configuring email settings, test the configuration by:
+
+<Steps>
+  <Step title="Register a test user">
+    Create a new account with a real email address you can access.
+  </Step>
+  
+  <Step title="Check email delivery">
+    Verify that you receive the verification email within a few minutes.
+  </Step>
+  
+  <Step title="Check spam folder">
+    If emails aren't arriving, check your spam/junk folder.
+  </Step>
+  
+  <Step title="Review logs">
+    Check ClassQuiz logs for SMTP errors:
+    ```bash
+    docker-compose logs api | grep -i mail
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Emails not being sent">
+    Check that:
+    - All MAIL_* environment variables are set correctly
+    - SKIP_EMAIL_VERIFICATION is set to False
+    - Your SMTP server is reachable from the ClassQuiz container
+    - Firewall rules allow outbound connections on your MAIL_PORT
+    
+    View logs:
+    ```bash
+    docker-compose logs api
+    ```
+  </Accordion>
+  
+  <Accordion title="Authentication failed">
+    Common causes:
+    - **Gmail:** Using account password instead of App Password
+    - **Office 365:** Account has 2FA enabled without app-specific password
+    - Incorrect username or password
+    - Account locked due to suspicious activity
+    
+    Test SMTP authentication:
+    ```bash
+    python3 -m smtplib -d smtp.gmail.com:587
+    ```
+  </Accordion>
+  
+  <Accordion title="Emails going to spam">
+    To improve email deliverability:
+    - Set up SPF, DKIM, and DMARC records for your domain
+    - Use a verified domain email address
+    - Use a reputable SMTP provider (SendGrid, Mailgun, etc.)
+    - Avoid generic words like "noreply" in the email address
+  </Accordion>
+  
+  <Accordion title="SSL/TLS errors">
+    ClassQuiz uses STARTTLS with SSL protocol TLS. If you encounter SSL errors:
+    - Ensure you're using port 587 (not 465 or 25)
+    - Check if your SMTP server supports STARTTLS
+    - Verify SSL certificates are valid
+    
+    The SMTP connection uses `ssl.PROTOCOL_TLS` with `starttls()`.
+  </Accordion>
+</AccordionGroup>
+
+## Security Best Practices
+
+<Warning>
+  Never commit email credentials to version control. Use environment variables or secrets management.
+</Warning>
+
+- Use App Passwords or API keys instead of account passwords
+- Restrict SMTP credentials to only send email (no read access)
+- Use a dedicated email account for ClassQuiz
+- Enable 2FA on your email account
+- Regularly rotate SMTP passwords
+- Monitor email sending logs for suspicious activity
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="gear" href="/configuration/environment-variables">
+    View all configuration options
+  </Card>
+  <Card title="OAuth Configuration" icon="key" href="/configuration/oauth">
+    Set up social login providers
+  </Card>
+</CardGroup>

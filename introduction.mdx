@@ -1,0 +1,116 @@
+---
+title: "Welcome to ClassQuiz"
+description: "An open-source, interactive quiz platform for educational purposes"
+---
+
+<div style={{
+  background: 'linear-gradient(135deg, #d4e7cb 0%, #b7cdb1 100%)',
+  borderRadius: '12px',
+  padding: '3rem 2rem',
+  marginBottom: '2rem',
+  textAlign: 'center'
+}}>
+  <h1 style={{
+    fontFamily: 'Dancing Script, cursive',
+    fontSize: '48px',
+    fontWeight: '400',
+    marginBottom: '1rem',
+    color: '#000000'
+  }}>ClassQuiz</h1>
+  <p style={{
+    fontFamily: 'Inter, sans-serif',
+    fontSize: '24px',
+    color: '#3a3a3a',
+    marginBottom: '2rem'
+  }}>The open-source quiz platform for interactive learning</p>
+  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+    <a href="/quickstart" style={{
+      background: '#b36b4a',
+      color: '#ffffff',
+      padding: '0.75rem 1.5rem',
+      borderRadius: '4px',
+      textDecoration: 'none',
+      fontFamily: 'Inter, sans-serif',
+      fontWeight: '700',
+      fontSize: '14px'
+    }}>Get Started</a>
+    <a href="/self-hosting" style={{
+      background: 'transparent',
+      color: '#3a3a3a',
+      padding: '0.75rem 1.5rem',
+      borderRadius: '4px',
+      textDecoration: 'none',
+      fontFamily: 'Inter, sans-serif',
+      fontWeight: '700',
+      fontSize: '14px',
+      border: '2px solid #3a3a3a'
+    }}>Self-Host</a>
+  </div>
+</div>
+
+## What is ClassQuiz?
+
+ClassQuiz is a quiz application similar to Kahoot!, but completely open-source. Create engaging quizzes and play them remotely with students, friends, or colleagues in real-time. It's perfect for teachers who want to make learning interactive and fun while maintaining full control over their data.
+
+<CardGroup cols={2}>
+  <Card title="Real-Time Gameplay" icon="bolt" href="/features/live-games">
+    Host live quiz sessions with Socket.IO-powered real-time interactions
+  </Card>
+  <Card title="Multiple Question Types" icon="list-check" href="/features/question-types">
+    ABCD, voting, range sliders, and text-based questions
+  </Card>
+  <Card title="Community Quizzes" icon="users" href="/features/community">
+    Browse and share quizzes in the public marketplace
+  </Card>
+  <Card title="Import from Kahoot" icon="download" href="/guides/import-from-kahoot">
+    Easily migrate your existing Kahoot quizzes
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<CardGroup cols={3}>
+  <Card title="OAuth & 2FA" icon="shield-halved">
+    Google, GitHub, and custom OpenID providers with WebAuthn and TOTP support
+  </Card>
+  <Card title="Flexible Storage" icon="database">
+    Choose between local filesystem or S3-compatible storage backends
+  </Card>
+  <Card title="Search & Discovery" icon="magnifying-glass">
+    Meilisearch-powered quiz discovery and filtering
+  </Card>
+  <Card title="Results Analytics" icon="chart-line">
+    Track player performance and quiz statistics
+  </Card>
+  <Card title="Internationalization" icon="globe">
+    Multi-language support via Weblate translations
+  </Card>
+  <Card title="Box Controllers" icon="gamepad">
+    Physical buzzer integration for classroom use
+  </Card>
+</CardGroup>
+
+## Try It Out
+
+There's a hosted version available at [classquiz.de](https://classquiz.de) running on servers in Karlsruhe, Germany. Try it out to see ClassQuiz in action before deploying your own instance.
+
+<Note>
+  ClassQuiz is licensed under the Mozilla Public License 2.0. Any modifications you make must be published and shared with the community.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get ClassQuiz running in minutes
+  </Card>
+  <Card title="Self-Hosting Guide" icon="server" href="/self-hosting">
+    Deploy your own instance with Docker Compose
+  </Card>
+  <Card title="Create Your First Quiz" icon="pen" href="/guides/creating-quizzes">
+    Learn how to build engaging quizzes
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Integrate with the ClassQuiz API
+  </Card>
+</CardGroup>

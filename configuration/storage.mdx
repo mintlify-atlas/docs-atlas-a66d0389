@@ -1,0 +1,245 @@
+---
+title: Storage Configuration
+description: Configure local or S3-compatible storage for ClassQuiz media files
+---
+
+ClassQuiz supports two storage backends for uploaded media files: local filesystem storage and S3-compatible object storage. This guide covers how to configure each option.
+
+## Storage Backend Selection
+
+<ParamField path="STORAGE_BACKEND" type="string" required>
+  The storage backend to use for uploaded files.
+  
+  **Options:**
+  - `local` - Store files on the local filesystem
+  - `s3` - Store files in S3-compatible object storage
+  
+  **Example:** `local` or `s3`
+</ParamField>
+
+## Local Storage Configuration
+
+When using `STORAGE_BACKEND=local`, files are stored directly on the server's filesystem.
+
+<ParamField path="STORAGE_PATH" type="string" required={"when STORAGE_BACKEND=local"}>
+  Absolute path to the directory where uploaded files will be stored.
+  
+  **Docker default:** `/app/data`
+  
+  **Example:** `/var/lib/classquiz/uploads`
+</ParamField>
+
+### Local Storage Setup
+
+<Steps>
+  <Step title="Set storage backend">
+    Configure the storage backend to use local filesystem:
+    ```bash
+    STORAGE_BACKEND=local
+    STORAGE_PATH=/app/data
+    ```
+  </Step>
+  
+  <Step title="Configure volume mount (Docker)">
+    Ensure the storage path is mounted as a volume in your `docker-compose.yml`:
+    ```yaml
+    volumes:
+      - ./uploads:/app/data
+    ```
+    This maps the local `./uploads` directory to `/app/data` in the container.
+  </Step>
+  
+  <Step title="Set permissions">
+    Ensure the application has write permissions to the storage directory:
+    ```bash
+    mkdir -p ./uploads
+    chmod 755 ./uploads
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Local storage is not recommended for production deployments with multiple instances, as files won't be shared across containers. Use S3 for scalable deployments.
+</Warning>
+
+## S3-Compatible Storage Configuration
+
+When using `STORAGE_BACKEND=s3`, files are stored in S3-compatible object storage (AWS S3, MinIO, DigitalOcean Spaces, etc.).
+
+<ParamField path="S3_ACCESS_KEY" type="string" required={"when STORAGE_BACKEND=s3"}>
+  Access key ID for S3 authentication.
+  
+  **Example:** `AKIAIOSFODNN7EXAMPLE`
+</ParamField>
+
+<ParamField path="S3_SECRET_KEY" type="string" required={"when STORAGE_BACKEND=s3"}>
+  Secret access key for S3 authentication.
+  
+  **Example:** `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`
+</ParamField>
+
+<ParamField path="S3_BUCKET_NAME" type="string" default="classquiz">
+  Name of the S3 bucket where files will be stored.
+  
+  The bucket will be automatically created if it doesn't exist.
+</ParamField>
+
+<ParamField path="S3_BASE_URL" type="string" required={"when STORAGE_BACKEND=s3"}>
+  Base URL of your S3-compatible storage service.
+  
+  **Examples:**
+  - AWS S3: `https://s3.amazonaws.com` or `https://s3.us-west-2.amazonaws.com`
+  - MinIO: `https://minio.example.com`
+  - DigitalOcean Spaces: `https://nyc3.digitaloceanspaces.com`
+</ParamField>
+
+### S3 Storage Setup
+
+<Steps>
+  <Step title="Create S3 bucket">
+    Create a bucket in your S3-compatible storage provider. ClassQuiz can auto-create the bucket if your credentials have sufficient permissions.
+  </Step>
+  
+  <Step title="Configure credentials">
+    Set up your S3 credentials and endpoint:
+    ```bash
+    STORAGE_BACKEND=s3
+    S3_ACCESS_KEY=your-access-key
+    S3_SECRET_KEY=your-secret-key
+    S3_BUCKET_NAME=classquiz
+    S3_BASE_URL=https://s3.amazonaws.com
+    ```
+  </Step>
+  
+  <Step title="Set bucket permissions">
+    Ensure your IAM user/role has the following permissions:
+    - `s3:PutObject` - Upload files
+    - `s3:GetObject` - Download files
+    - `s3:DeleteObject` - Delete files
+    - `s3:ListBucket` - List bucket contents
+    - `s3:CreateBucket` - Create bucket (optional, if auto-create is needed)
+  </Step>
+</Steps>
+
+## Configuration Examples
+
+<CodeGroup>
+```bash Local Storage (Docker)
+STORAGE_BACKEND=local
+STORAGE_PATH=/app/data
+
+# In docker-compose.yml:
+volumes:
+  - ./uploads:/app/data
+```
+
+```bash AWS S3
+STORAGE_BACKEND=s3
+S3_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
+S3_SECRET_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+S3_BUCKET_NAME=classquiz-production
+S3_BASE_URL=https://s3.us-west-2.amazonaws.com
+```
+
+```bash MinIO
+STORAGE_BACKEND=s3
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET_NAME=classquiz
+S3_BASE_URL=https://minio.example.com
+```
+
+```bash DigitalOcean Spaces
+STORAGE_BACKEND=s3
+S3_ACCESS_KEY=your-spaces-key
+S3_SECRET_KEY=your-spaces-secret
+S3_BUCKET_NAME=classquiz
+S3_BASE_URL=https://nyc3.digitaloceanspaces.com
+```
+</CodeGroup>
+
+## Storage Limits
+
+By default, each user has a storage quota of 1 GB (1,074,000,000 bytes). You can adjust this limit:
+
+```bash
+FREE_STORAGE_LIMIT=1074000000  # 1 GB in bytes
+```
+
+<Tip>
+  To calculate storage limits:
+  - 100 MB = 104857600
+  - 500 MB = 524288000
+  - 1 GB = 1074000000
+  - 5 GB = 5368709120
+</Tip>
+
+## Supported File Types
+
+ClassQuiz supports the following MIME types for uploads:
+- `image/png`
+- `image/jpeg`
+- `image/gif`
+- `image/webp`
+- `video/mp4`
+
+## Migration Between Storage Backends
+
+<Warning>
+  ClassQuiz does not provide built-in tools for migrating between storage backends. If you need to switch from local to S3 (or vice versa), you'll need to manually copy files and update references.
+</Warning>
+
+### Migration Steps
+
+<Steps>
+  <Step title="Export file list">
+    Create a list of all files currently stored in your old storage backend.
+  </Step>
+  
+  <Step title="Copy files">
+    Use `aws s3 sync` or similar tools to copy files to the new storage location.
+  </Step>
+  
+  <Step title="Update configuration">
+    Change your `STORAGE_BACKEND` and related environment variables.
+  </Step>
+  
+  <Step title="Test uploads">
+    Verify that new uploads work correctly with the new storage backend.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Files not uploading to S3">
+    Check that:
+    - Your S3 credentials are correct
+    - The bucket exists or your credentials allow bucket creation
+    - Your IAM permissions include `s3:PutObject`
+    - The `S3_BASE_URL` is correct for your region
+  </Accordion>
+  
+  <Accordion title="Permission denied with local storage">
+    Ensure the application has write permissions:
+    ```bash
+    sudo chown -R 1000:1000 ./uploads
+    chmod -R 755 ./uploads
+    ```
+  </Accordion>
+  
+  <Accordion title="Uploaded files not accessible">
+    For S3 storage, ensure your bucket policy allows public read access for uploaded files, or that pre-signed URLs are being generated correctly.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="gear" href="/configuration/environment-variables">
+    View all configuration options
+  </Card>
+  <Card title="External Services" icon="server" href="/configuration/external-services">
+    Configure database and cache services
+  </Card>
+</CardGroup>

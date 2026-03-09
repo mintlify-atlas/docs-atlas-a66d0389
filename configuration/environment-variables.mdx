@@ -1,0 +1,192 @@
+---
+title: Environment Variables Reference
+description: Complete reference for all ClassQuiz environment variables
+---
+
+This page provides a comprehensive reference for all environment variables used in ClassQuiz. These variables control core application settings, database connections, and feature configuration.
+
+## Core Application Settings
+
+<ParamField path="ROOT_ADDRESS" type="string" required>
+  The base URL of your ClassQuiz installation. Used for generating links in emails and OAuth callbacks.
+  
+  **Example:** `https://classquiz.example.com`
+  
+  <Warning>Do not include a trailing slash at the end of the URL</Warning>
+</ParamField>
+
+<ParamField path="SECRET_KEY" type="string" required>
+  Secret key for JWT token signing and cryptographic operations. Must be kept secure.
+  
+  **Default:** `TOP_SECRET` (change this!)
+  
+  <Warning>Generate a secure random string using: `openssl rand -hex 32`</Warning>
+</ParamField>
+
+<ParamField path="ACCESS_TOKEN_EXPIRE_MINUTES" type="integer" default="30">
+  Duration in minutes before access tokens expire.
+  
+  <Warning>This is set by Docker Compose and should not be changed unless you understand the implications</Warning>
+</ParamField>
+
+## Database Configuration
+
+<ParamField path="DB_URL" type="string" required>
+  PostgreSQL database connection URL.
+  
+  **Format:** `postgresql://username:password@host:port/database`
+  
+  **Default:** `postgresql://postgres:classquiz@db:5432/classquiz`
+  
+  <Warning>In Docker deployments, do not change this value</Warning>
+</ParamField>
+
+## Redis Configuration
+
+<ParamField path="REDIS" type="string" required>
+  Redis connection URL for caching and session management.
+  
+  **Format:** `redis://host:port/db?decode_responses=True`
+  
+  **Default:** `redis://redis:6379/0?decode_responses=True`
+  
+  <Warning>In Docker deployments, do not change this value</Warning>
+</ParamField>
+
+## Email Verification
+
+<ParamField path="SKIP_EMAIL_VERIFICATION" type="boolean" default="false">
+  Whether to skip email verification for new user registrations.
+  
+  Set to `True` to allow users to immediately access their accounts without clicking a verification link.
+  
+  **Values:** `True` or `False`
+</ParamField>
+
+## User Management
+
+<ParamField path="REGISTRATION_DISABLED" type="boolean" default="false">
+  Disable new user registration. When enabled, only existing users can log in.
+  
+  **Values:** `True` or `False`
+</ParamField>
+
+<ParamField path="MODS" type="array" default="[]">
+  List of user emails with moderator privileges.
+  
+  **Format:** Comma-separated list or JSON array
+</ParamField>
+
+## Storage Limits
+
+<ParamField path="FREE_STORAGE_LIMIT" type="integer" default="1074000000">
+  Maximum storage quota per user in bytes.
+  
+  **Default:** 1,074,000,000 bytes (~1 GB)
+</ParamField>
+
+## Worker Configuration
+
+<ParamField path="MAX_WORKERS" type="integer" default="1">
+  Number of Gunicorn worker processes.
+  
+  <Warning>Keep this at 1 for Docker deployments to avoid issues with background tasks</Warning>
+</ParamField>
+
+## Telemetry
+
+<ParamField path="TELEMETRY_ENABLED" type="boolean" default="true">
+  Enable or disable anonymous usage telemetry.
+  
+  **Values:** `True` or `False`
+</ParamField>
+
+<ParamField path="SENTRY_DSN" type="string" optional>
+  Sentry DSN for error tracking and monitoring.
+  
+  **Example:** `https://examplePublicKey@o0.ingest.sentry.io/0`
+</ParamField>
+
+## Cache Settings
+
+<ParamField path="CACHE_EXPIRY" type="integer" default="86400">
+  Default cache expiration time in seconds.
+  
+  **Default:** 86400 seconds (24 hours)
+</ParamField>
+
+## Meilisearch Configuration
+
+<ParamField path="MEILISEARCH_URL" type="string" default="http://127.0.0.1:7700">
+  URL for the Meilisearch instance used for search functionality.
+  
+  **Docker default:** `http://meilisearch:7700`
+  
+  <Warning>In Docker deployments, use the service name as the hostname</Warning>
+</ParamField>
+
+<ParamField path="MEILISEARCH_INDEX" type="string" default="classquiz">
+  Name of the Meilisearch index for storing quiz data.
+</ParamField>
+
+## Example Configuration
+
+<CodeGroup>
+```bash Docker Compose
+# Core settings
+ROOT_ADDRESS=https://classquiz.example.com
+SECRET_KEY=your-random-secret-key-here
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Database (Docker internal)
+DB_URL=postgresql://postgres:classquiz@db:5432/classquiz
+REDIS=redis://redis:6379/0?decode_responses=True
+
+# Email verification
+SKIP_EMAIL_VERIFICATION=False
+
+# Worker settings
+MAX_WORKERS=1
+
+# Search
+MEILISEARCH_URL=http://meilisearch:7700
+```
+
+```bash Standalone
+# Core settings
+ROOT_ADDRESS=http://localhost:8000
+SECRET_KEY=your-random-secret-key-here
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Database
+DB_URL=postgresql://postgres:mysecretpassword@localhost:5432/classquiz
+REDIS=redis://localhost:6379/0?decode_responses=True
+
+# Email verification
+SKIP_EMAIL_VERIFICATION=False
+
+# Storage limit
+FREE_STORAGE_LIMIT=1074000000
+
+# Search
+MEILISEARCH_URL=http://127.0.0.1:7700
+MEILISEARCH_INDEX=classquiz
+```
+</CodeGroup>
+
+## Related Configuration
+
+<CardGroup cols={2}>
+  <Card title="Storage Configuration" icon="database" href="/configuration/storage">
+    Configure local or S3 storage backends
+  </Card>
+  <Card title="Email Setup" icon="envelope" href="/configuration/email">
+    Configure SMTP for sending verification emails
+  </Card>
+  <Card title="OAuth Providers" icon="key" href="/configuration/oauth">
+    Set up Google, GitHub, or custom OpenID authentication
+  </Card>
+  <Card title="External Services" icon="server" href="/configuration/external-services">
+    Configure Redis, PostgreSQL, Meilisearch, and more
+  </Card>
+</CardGroup>

@@ -1,0 +1,368 @@
+---
+title: 'Live Game Endpoints'
+description: 'Real-time game data and control endpoints'
+---
+
+## Get Live Game Data
+
+<api>GET /api/v1/live/</api>
+
+Get comprehensive live game data including quiz questions, game session, and player count.
+
+### Query Parameters
+
+<ParamField query="game_pin" type="string" required>
+  6-digit game PIN or quiz ID
+</ParamField>
+
+<ParamField query="api_key" type="string" required>
+  User API key for authentication
+</ParamField>
+
+<ParamField query="player_count_as_a_string" type="boolean" default="false">
+  Return player count as string instead of integer
+</ParamField>
+
+<ParamField query="in_array" type="boolean" default="false">
+  Wrap response in array
+</ParamField>
+
+<ParamField query="in_human_count" type="boolean" default="false">
+  Use 1-based indexing for current question (human-readable)
+</ParamField>
+
+### Response
+
+<ResponseField name="quiz" type="object">
+  Game and quiz information
+  - `game_id` (uuid): Game session ID
+  - `game_pin` (string): 6-digit game PIN
+  - `title` (string): Quiz title
+  - `description` (string): Quiz description
+  - `questions` (array): Array of questions with answers marked as correct/incorrect
+  - `current_question` (integer): Current question index
+  - `total_questions` (integer): Total number of questions
+  - `game_mode` (string): Game mode
+  - `started` (boolean): Whether game has started
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Game session data
+  - `admin` (string): Admin user ID
+  - `game_id` (string): Game session ID
+  - `answers` (array): Array of player answers per question
+</ResponseField>
+
+<ResponseField name="players" type="object">
+  Player count information
+  - `count` (integer|string): Number of connected players
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "quiz": {
+    "game_id": "123e4567-e89b-12d3-a456-426614174000",
+    "game_pin": "123456",
+    "title": "Science Quiz",
+    "current_question": 0,
+    "total_questions": 10,
+    "questions": [
+      {
+        "question": "What is H2O?",
+        "type": "ABCD",
+        "answers": [
+          {"answer": "Water", "right": true, "color_code": "#00F007"},
+          {"answer": "Oxygen", "right": false, "color_code": "#FF0000"}
+        ]
+      }
+    ]
+  },
+  "data": {
+    "admin": "user-uuid",
+    "game_id": "game-uuid",
+    "answers": []
+  },
+  "players": {
+    "count": 5
+  }
+}
+```
+
+---
+
+## Get User Count
+
+<api>GET /api/v1/live/user_count</api>
+
+Get the current number of players in a game.
+
+### Query Parameters
+
+<ParamField query="game_pin" type="string" required>
+  6-digit game PIN or quiz ID
+</ParamField>
+
+<ParamField query="api_key" type="string" required>
+  User API key
+</ParamField>
+
+<ParamField query="as_string" type="boolean" default="false">
+  Return count as string
+</ParamField>
+
+<ParamField query="as_array" type="boolean" default="false">
+  Wrap response in array
+</ParamField>
+
+### Response
+
+```json
+{
+  "players": {
+    "count": 5
+  }
+}
+```
+
+---
+
+## Get Players List
+
+<api>GET /api/v1/live/players</api>
+
+Get detailed list of all players in a game session.
+
+### Query Parameters
+
+<ParamField query="game_pin" type="string" required>
+  6-digit game PIN
+</ParamField>
+
+<ParamField query="api_key" type="string">
+  User API key for authentication
+</ParamField>
+
+<ParamField query="game_id" type="uuid">
+  Alternative authentication via game ID
+</ParamField>
+
+### Authentication
+
+Requires either `api_key` or `game_id`.
+
+### Response
+
+Array of player objects:
+
+<ResponseField name="username" type="string">
+  Player's username
+</ResponseField>
+
+<ResponseField name="sid" type="string">
+  Socket connection ID
+</ResponseField>
+
+### Example Response
+
+```json
+[
+  {
+    "username": "Player1",
+    "sid": "socket-id-123"
+  },
+  {
+    "username": "Player2",
+    "sid": "socket-id-456"
+  }
+]
+```
+
+---
+
+## Set Question
+
+<api>POST /api/v1/live/set_question</api>
+
+Manually set the current question number in a live game.
+
+### Query Parameters
+
+<ParamField query="game_pin" type="string" required>
+  6-digit game PIN or quiz ID
+</ParamField>
+
+<ParamField query="question_number" type="integer" required>
+  Question index to set (0-based)
+</ParamField>
+
+<ParamField query="api_key" type="string" required>
+  User API key
+</ParamField>
+
+### Authentication
+
+Required - Must be the game owner
+
+### Response
+
+Emits a Socket.IO event `set_question_number` to all connected clients with:
+- `question_index`: The new question index
+- `question`: The question data
+
+Returns success status.
+
+---
+
+## Get Player Scores
+
+<api>GET /api/v1/live/scores</api>
+
+Get current leaderboard with player scores.
+
+### Query Parameters
+
+<ParamField query="game_pin" type="string" required>
+  6-digit game PIN or quiz ID
+</ParamField>
+
+<ParamField query="api_key" type="string" required>
+  User API key
+</ParamField>
+
+### Response
+
+Array of player scores sorted by score (highest first):
+
+<ResponseField name="username" type="string">
+  Player's username
+</ResponseField>
+
+<ResponseField name="score" type="integer">
+  Player's total score
+</ResponseField>
+
+### Example Response
+
+```json
+[
+  {"username": "Player1", "score": 1500},
+  {"username": "Player2", "score": 1200},
+  {"username": "Player3", "score": 800}
+]
+```
+
+---
+
+## Get Current Question
+
+<api>GET /api/v1/live/get_question/now</api>
+
+Get the currently displayed question with answer markings.
+
+### Query Parameters
+
+<ParamField query="game_pin" type="string" required>
+  6-digit game PIN or quiz ID
+</ParamField>
+
+<ParamField query="api_key" type="string" required>
+  User API key
+</ParamField>
+
+<ParamField query="in_human_count" type="boolean" default="false">
+  Use 1-based indexing for current question
+</ParamField>
+
+### Response
+
+Array containing the current question with additional metadata:
+
+<ResponseField name="question" type="string">
+  Question text
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Question type (ABCD, RANGE, VOTING, etc.)
+</ResponseField>
+
+<ResponseField name="answers" type="array">
+  Array of answers with color codes indicating correctness:
+  - `#00F007` for correct answers
+  - `#FF0000` for incorrect answers
+</ResponseField>
+
+<ResponseField name="current_question" type="integer">
+  Current question index
+</ResponseField>
+
+<ResponseField name="total_questions" type="integer">
+  Total number of questions
+</ResponseField>
+
+### Example Response
+
+```json
+[
+  {
+    "question": "What is the capital of France?",
+    "type": "ABCD",
+    "time": "30",
+    "answers": [
+      {"answer": "Paris", "right": true, "color": "#4A90E2", "color_code": "#00F007"},
+      {"answer": "London", "right": false, "color": "#E94A4A", "color_code": "#FF0000"}
+    ],
+    "current_question": 1,
+    "total_questions": 10
+  }
+]
+```
+
+---
+
+## Get Voting Results
+
+<api>GET /api/v1/live/voting</api>
+
+Get real-time voting results for the current voting question.
+
+### Query Parameters
+
+<ParamField query="game_pin" type="string" required>
+  6-digit game PIN or quiz ID
+</ParamField>
+
+<ParamField query="api_key" type="string" required>
+  User API key
+</ParamField>
+
+<ParamField query="as_array" type="boolean" default="false">
+  Wrap response in array
+</ParamField>
+
+### Response
+
+Object with answer text as keys and vote counts as values:
+
+```json
+{
+  "Option A": 15,
+  "Option B": 23,
+  "Option C": 8
+}
+```
+
+---
+
+## API Key Authentication
+
+All live game endpoints require an API key for authentication. You can generate an API key from the user settings page or via the `/api/v1/users/api_keys` endpoint.
+
+### Using with Game PIN
+
+If you use a quiz ID instead of a game PIN, the system will automatically look up the active game PIN for that quiz and the authenticated user.
+
+### Real-time Updates
+
+For real-time updates during a game, use Socket.IO connections. The live endpoints are designed for polling or external integrations (e.g., OBS overlays, custom dashboards).

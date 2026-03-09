@@ -1,0 +1,375 @@
+---
+title: User Management
+description: Managing users, roles, and permissions in ClassQuiz
+---
+
+ClassQuiz provides administrative tools for managing users, handling authentication, and controlling access to platform features.
+
+## User Roles
+
+ClassQuiz has three permission levels:
+
+1. **Regular Users**: Can create quizzes, play games, manage their own content
+2. **Moderators**: Can review and rate public quizzes
+3. **Admins**: Full system access, including user deletion
+
+## User Model
+
+Users are defined in `classquiz/db/models.py:37-65` with these key properties:
+
+```python
+class User:
+    id: uuid.UUID
+    email: str (unique)
+    username: str (unique)
+    password: str (hashed, nullable)
+    verified: bool
+    created_at: datetime
+    auth_type: UserAuthTypes  # LOCAL, GOOGLE, GITHUB, CUSTOM
+    storage_used: int  # Bytes used
+    avatar: bytes  # Base64 encoded
+    require_password: bool
+    totp_secret: str  # 2FA secret
+    backup_code: str  # Recovery code
+```
+
+## Authentication Methods
+
+### Local Authentication
+
+Users create accounts with email and password:
+- Passwords are hashed before storage
+- Email verification required (`verified: bool`)
+- Verification key sent via email (`verify_key`)
+
+### OAuth Providers
+
+Supported OAuth providers:
+
+<Tabs>
+  <Tab title="Google">
+    Users authenticate via Google OAuth:
+    - `auth_type: GOOGLE`
+    - `google_uid`: Unique Google identifier
+    - Password not required
+  </Tab>
+  
+  <Tab title="GitHub">
+    Users authenticate via GitHub OAuth:
+    - `auth_type: GITHUB`
+    - `github_user_id`: GitHub user ID
+    - Password not required
+  </Tab>
+  
+  <Tab title="Custom">
+    Custom SSO integrations:
+    - `auth_type: CUSTOM`
+    - Configured per instance
+  </Tab>
+</Tabs>
+
+### Two-Factor Authentication
+
+ClassQuiz supports multiple 2FA methods:
+
+**TOTP (Time-based One-Time Password)**:
+- `totp_secret`: 32-character secret for authenticator apps
+- Used with Google Authenticator, Authy, etc.
+
+**FIDO2/WebAuthn**:
+- Hardware security keys (YubiKey, etc.)
+- Stored in `FidoCredentials` table
+- Supports multiple keys per user
+
+**Backup Codes**:
+- 64-character hex string (`backup_code`)
+- Used when primary 2FA method unavailable
+- Generated automatically on account creation
+
+## User Sessions
+
+Sessions are tracked in the `UserSession` model (`classquiz/db/models.py:92-109`):
+
+```python
+class UserSession:
+    id: uuid.UUID
+    user: User
+    session_key: str (unique, 64 chars)
+    created_at: datetime
+    ip_address: str
+    user_agent: str
+    last_seen: datetime
+```
+
+### Session Management
+
+- Sessions expire after inactivity
+- Users can view active sessions
+- Admins can revoke sessions
+- `last_seen` updated on each request
+
+<Tip>
+Monitor the `user_agent` field to detect suspicious login patterns or automated access.
+</Tip>
+
+## API Keys
+
+Users can generate API keys for programmatic access:
+
+```python
+class ApiKey:
+    key: str (48 characters, primary key)
+    user: User
+```
+
+API keys:
+- Provide full account access
+- Don't expire automatically
+- Used with `Authorization: Bearer <key>` header
+- Should be treated as securely as passwords
+
+<Warning>
+API keys grant complete access to user accounts. Users should regenerate keys if compromised.
+</Warning>
+
+## Admin Operations
+
+Administrators can delete users through the API defined in `classquiz/routers/admin.py`.
+
+### Delete User by ID
+
+**Endpoint**: `DELETE /api/v1/admin/user/id`
+
+**Parameters**: `user_id` (UUID)
+
+**Authentication**: Admin user required
+
+```bash
+curl -X DELETE \
+  'https://your-instance.com/api/v1/admin/user/id?user_id=550e8400-e29b-41d4-a716-446655440000' \
+  -H 'Authorization: Bearer ADMIN_TOKEN'
+```
+
+**Response**:
+```json
+{
+  "deleted": 1
+}
+```
+
+### Delete User by Username
+
+**Endpoint**: `DELETE /api/v1/admin/user/username`
+
+**Parameters**: `username` (string)
+
+```bash
+curl -X DELETE \
+  'https://your-instance.com/api/v1/admin/user/username?username=johndoe' \
+  -H 'Authorization: Bearer ADMIN_TOKEN'
+```
+
+### Delete User by Email
+
+**Endpoint**: `DELETE /api/v1/admin/user/email`
+
+**Parameters**: `email` (string)
+
+```bash
+curl -X DELETE \
+  'https://your-instance.com/api/v1/admin/user/email?email=user@example.com' \
+  -H 'Authorization: Bearer ADMIN_TOKEN'
+```
+
+## Cascade Deletion
+
+When a user is deleted, the following related data is automatically removed:
+
+- **Quizzes**: All quizzes created by the user
+- **Game Results**: Historical game session data
+- **Sessions**: Active and expired user sessions
+- **API Keys**: All API keys for the user
+- **FIDO Credentials**: Registered security keys
+- **QuizTivities**: Interactive content created by user
+- **Storage Items**: Uploaded images and files (set to NULL)
+- **Ratings**: Quiz ratings from the user
+
+<Note>
+Storage items are not deleted but have their `user` reference set to NULL. This preserves images that may be used in other quizzes.
+</Note>
+
+## Storage Quotas
+
+Each user has a storage quota for uploaded images:
+
+```python
+# Check current usage
+user.storage_used  # Bytes
+
+# Check against limit
+from classquiz.config import settings
+if user.storage_used > settings.free_storage_limit:
+    raise HTTPException(status_code=409, detail="Storage limit reached")
+```
+
+### Storage Calculation
+
+- Tracked in `user.storage_used` (BigInteger, bytes)
+- Updated when uploading images
+- Includes quiz images, cover images, and question images
+- Checked before imports and uploads
+
+See implementation in `classquiz/routers/eximport.py:86-88`:
+
+```python
+if user.storage_used > settings.free_storage_limit:
+    raise HTTPException(status_code=409, detail="Storage limit reached")
+```
+
+## Moderator Tools
+
+Moderators have access to special endpoints for content review. See the [Moderation Guide](./moderation) for details.
+
+## Authentication Guards
+
+ClassQuiz uses FastAPI dependency injection for authentication:
+
+### Regular User Authentication
+
+```python
+from classquiz.auth import get_current_user
+
+@router.get("/protected")
+async def protected_route(user: User = Depends(get_current_user)):
+    return {"user_id": user.id}
+```
+
+### Moderator Authentication
+
+```python
+from classquiz.auth import get_current_moderator
+
+@router.get("/moderation/status")
+async def mod_only(user: User = Depends(get_current_moderator)):
+    return {"status": "ok"}
+```
+
+### Admin Authentication
+
+```python
+from classquiz.auth import get_admin_user
+
+@router.delete("/admin/user/id")
+async def delete_user(user_id: UUID, _: User = Depends(get_admin_user)):
+    return {"deleted": await User.objects.delete(id=user_id)}
+```
+
+## Best Practices
+
+### Account Security
+
+<Steps>
+  <Step title="Enforce email verification">
+    Always verify user emails before granting full access. Check `user.verified` before allowing quiz creation or game hosting.
+  </Step>
+
+  <Step title="Encourage 2FA">
+    Prompt users to enable two-factor authentication, especially for accounts with public quizzes.
+  </Step>
+
+  <Step title="Monitor API keys">
+    Log API key usage and alert users to suspicious patterns.
+  </Step>
+
+  <Step title="Session hygiene">
+    Implement session expiration and allow users to view/revoke active sessions.
+  </Step>
+</Steps>
+
+### User Management
+
+<Tip>
+Before deleting a user account, consider offering a grace period or export option for their quizzes.
+</Tip>
+
+1. **Soft deletes**: Consider marking users as inactive instead of hard deletion
+2. **Audit logs**: Track admin actions for compliance
+3. **Data export**: Provide GDPR-compliant data export
+4. **Storage alerts**: Notify users approaching storage limits
+
+## User Avatar Management
+
+User avatars are stored as base64-encoded bytes:
+
+```python
+class User:
+    avatar: bytes = ormar.LargeBinary(
+        max_length=25000,
+        represent_as_base64_str=True
+    )
+```
+
+- Maximum size: 25KB
+- Automatically encoded/decoded as base64
+- Displayed in game lobbies and quiz listings
+
+## Password Management
+
+Password updates require current password verification:
+
+```python
+class UpdatePassword(BaseModel):
+    old_password: str
+    new_password: str
+```
+
+OAuth users (`auth_type != LOCAL`) may not have passwords:
+- `password` field is nullable
+- `require_password: false` for OAuth-only accounts
+- Cannot change password if not set
+
+## User Queries
+
+Common user management queries:
+
+### Find users by authentication type
+
+```python
+local_users = await User.objects.filter(auth_type=UserAuthTypes.LOCAL).all()
+google_users = await User.objects.filter(auth_type=UserAuthTypes.GOOGLE).all()
+```
+
+### Find unverified users
+
+```python
+unverified = await User.objects.filter(verified=False).all()
+```
+
+### Check storage usage
+
+```python
+over_quota = await User.objects.filter(
+    storage_used__gt=settings.free_storage_limit
+).all()
+```
+
+### Find users with 2FA enabled
+
+```python
+totp_users = await User.objects.filter(
+    totp_secret__isnull=False
+).all()
+```
+
+## Integration Points
+
+Users interact with these system components:
+
+- **Quizzes**: `Quiz.user_id` foreign key
+- **Game Results**: `GameResults.user` foreign key
+- **Storage**: `StorageItem.user` foreign key
+- **Sessions**: `UserSession.user` foreign key
+- **Ratings**: `Rating.user` foreign key
+- **Controllers**: `Controller.user` foreign key (for game controllers)
+
+All use `ReferentialAction.CASCADE` for automatic cleanup on user deletion.

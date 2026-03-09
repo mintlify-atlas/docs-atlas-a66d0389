@@ -1,0 +1,319 @@
+---
+title: 'Search & Discovery'
+description: 'Search for quizzes using Meilisearch'
+---
+
+## Search Quizzes (POST)
+
+<api>POST /api/v1/search/</api>
+
+Search for public quizzes with advanced filtering and highlighting.
+
+### Request Body
+
+<ParamField body="q" type="string" required>
+  Search query text
+</ParamField>
+
+<ParamField body="offset" type="integer" default="0">
+  Number of results to skip (for pagination)
+</ParamField>
+
+<ParamField body="limit" type="integer" default="20">
+  Maximum number of results to return
+</ParamField>
+
+<ParamField body="filter" type="string">
+  Filter expression (Meilisearch syntax)
+  
+  Examples:
+  - `imported_from_kahoot = false`
+  - `user = "username"`
+</ParamField>
+
+<ParamField body="sort" type="array">
+  Array of sort criteria
+  
+  Examples:
+  - `["created_at:desc"]`
+  - `["likes:desc", "views:desc"]`
+</ParamField>
+
+<ParamField body="attributesToRetrieve" type="array" default="['*']">
+  Attributes to include in results
+</ParamField>
+
+<ParamField body="attributesToCrop" type="array">
+  Attributes to crop to specified length
+</ParamField>
+
+<ParamField body="cropLength" type="integer" default="200">
+  Maximum length for cropped attributes
+</ParamField>
+
+<ParamField body="attributesToHighlight" type="array">
+  Attributes to highlight matching terms in
+</ParamField>
+
+### Example Request
+
+```json
+{
+  "q": "science",
+  "offset": 0,
+  "limit": 10,
+  "filter": "imported_from_kahoot = false",
+  "sort": ["likes:desc"],
+  "attributesToHighlight": ["title", "description"]
+}
+```
+
+### Response
+
+<ResponseField name="hits" type="array">
+  Array of matching quiz objects
+</ResponseField>
+
+<ResponseField name="query" type="string">
+  The search query that was executed
+</ResponseField>
+
+<ResponseField name="limit" type="integer">
+  Number of results requested
+</ResponseField>
+
+<ResponseField name="offset" type="integer">
+  Pagination offset
+</ResponseField>
+
+<ResponseField name="processingTimeMs" type="integer">
+  Search processing time in milliseconds
+</ResponseField>
+
+### Hit Object
+
+<ResponseField name="id" type="uuid">
+  Quiz ID
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Quiz title
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Quiz description
+</ResponseField>
+
+<ResponseField name="user" type="string">
+  Username of quiz creator
+</ResponseField>
+
+<ResponseField name="imported_from_kahoot" type="boolean">
+  Whether quiz was imported from Kahoot
+</ResponseField>
+
+<ResponseField name="formatted" type="object">
+  Formatted version with highlighted matches (when using attributesToHighlight)
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "hits": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "title": "Science Fundamentals",
+      "description": "Test your knowledge of basic science concepts",
+      "user": "teacher123",
+      "imported_from_kahoot": false,
+      "formatted": {
+        "title": "<em>Science</em> Fundamentals",
+        "description": "Test your knowledge of basic <em>science</em> concepts"
+      }
+    }
+  ],
+  "query": "science",
+  "limit": 10,
+  "offset": 0,
+  "processingTimeMs": 12
+}
+```
+
+---
+
+## Search Quizzes (GET)
+
+<api>GET /api/v1/search/</api>
+
+Search for quizzes using URL parameters (simpler alternative to POST).
+
+### Query Parameters
+
+<ParamField query="q" type="string" required>
+  Search query text
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Pagination offset
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Number of results
+</ParamField>
+
+<ParamField query="filter" type="string">
+  Filter expression
+</ParamField>
+
+<ParamField query="cropLength" type="integer" default="200">
+  Crop length for text fields
+</ParamField>
+
+<ParamField query="attributesToHighlight" type="string" default="*">
+  Comma-separated attributes to highlight
+</ParamField>
+
+### Example Request
+
+```
+GET /api/v1/search/?q=mathematics&limit=10&filter=imported_from_kahoot=false
+```
+
+### Response
+
+Same format as POST endpoint.
+
+---
+
+## Search Features
+
+### Full-Text Search
+
+Meilisearch provides typo-tolerant full-text search across:
+- Quiz titles
+- Quiz descriptions  
+- Creator usernames
+
+### Filtering
+
+Filter quizzes by:
+- **Import status**: `imported_from_kahoot = true/false`
+- **Creator**: `user = "username"`
+- Custom filters based on indexed attributes
+
+### Sorting
+
+Sort results by:
+- `likes:desc` - Most liked
+- `views:desc` - Most viewed  
+- `plays:desc` - Most played
+- `created_at:desc` - Newest first
+- `created_at:asc` - Oldest first
+
+### Highlighting
+
+Request highlighted results to show where search terms matched:
+
+```json
+{
+  "attributesToHighlight": ["title", "description"]
+}
+```
+
+Matching terms are wrapped in `<em>` tags in the `formatted` field.
+
+### Pagination
+
+Use `offset` and `limit` for pagination:
+
+```javascript
+// Page 1
+{ "offset": 0, "limit": 20 }
+
+// Page 2  
+{ "offset": 20, "limit": 20 }
+
+// Page 3
+{ "offset": 40, "limit": 20 }
+```
+
+---
+
+## Search Examples
+
+### Basic Search
+
+```bash
+curl -X POST https://classquiz.example.com/api/v1/search/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "q": "geography",
+    "limit": 10
+  }'
+```
+
+### Search with Filters
+
+```bash
+curl -X POST https://classquiz.example.com/api/v1/search/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "q": "history",
+    "limit": 10,
+    "filter": "imported_from_kahoot = false",
+    "sort": ["likes:desc"]
+  }'
+```
+
+### Search by User
+
+```bash
+curl -X GET "https://classquiz.example.com/api/v1/search/?q=&filter=user%3D%22teacher123%22&limit=20"
+```
+
+### Highlighted Results
+
+```bash
+curl -X POST https://classquiz.example.com/api/v1/search/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "q": "math",
+    "limit": 5,
+    "attributesToHighlight": ["title", "description"]
+  }'
+```
+
+---
+
+## Search Tips
+
+### Typo Tolerance
+
+Meilisearch automatically handles typos:
+- "sceince" → finds "science"
+- "mathmatic" → finds "mathematics"
+
+### Empty Query
+
+An empty query (`q: ""`) returns all quizzes, useful with filters:
+
+```json
+{
+  "q": "",
+  "filter": "user = \"teacher123\"",
+  "sort": ["created_at:desc"]
+}
+```
+
+### Performance
+
+Meilisearch is extremely fast - most searches complete in under 50ms. The `processingTimeMs` field shows actual search time.
+
+### Index Maintenance
+
+The search index is automatically updated when:
+- New quizzes are created
+- Quizzes are made public
+- Quizzes are updated
+- Quizzes are deleted

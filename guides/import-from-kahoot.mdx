@@ -1,0 +1,172 @@
+---
+title: Import Quizzes from Kahoot
+description: Learn how to import your existing Kahoot quizzes into ClassQuiz
+---
+
+ClassQuiz supports importing quizzes directly from Kahoot, making it easy to migrate your existing content. The import process automatically handles questions, answers, images, and quiz metadata.
+
+## How It Works
+
+The Kahoot importer connects to Kahoot's public API and downloads:
+- Quiz title and description
+- All questions and answer choices
+- Question images and cover images
+- Time limits for each question
+- Correct answer information
+
+All imported content is stored in your ClassQuiz account and can be edited after import.
+
+## Importing a Quiz
+
+<Steps>
+  <Step title="Find the Kahoot Quiz ID">
+    Navigate to the Kahoot quiz you want to import. The quiz ID is in the URL:
+    ```
+    https://create.kahoot.it/details/[QUIZ_ID]
+    ```
+    Copy this UUID (e.g., `550e8400-e29b-41d4-a716-446655440000`).
+  </Step>
+
+  <Step title="Use the Import Endpoint">
+    Send a POST request to `/api/v1/quiz/import/{quiz_id}` with your authentication token:
+    
+    ```bash
+    curl -X POST \
+      'https://your-instance.com/api/v1/quiz/import/550e8400-e29b-41d4-a716-446655440000' \
+      -H 'Authorization: Bearer YOUR_TOKEN'
+    ```
+  </Step>
+
+  <Step title="Wait for Processing">
+    The import process downloads all images and creates the quiz in your account. This may take a few moments depending on the number of images.
+  </Step>
+
+  <Step title="Review and Edit">
+    The imported quiz will be marked as **private** by default. Review the quiz in the editor and make any necessary adjustments before making it public.
+  </Step>
+</Steps>
+
+## What Gets Imported
+
+### Questions
+- **Question text**: Sanitized HTML with allowed tags removed
+- **Answer choices**: Up to 4 answer options with correct answer indicators
+- **Time limit**: Converted from milliseconds to seconds
+- **Images**: Downloaded and stored in your ClassQuiz storage
+
+### Quiz Metadata
+- **Title**: Cleaned and sanitized
+- **Description**: Falls back to "Description Missing!" if empty
+- **Cover image**: Downloaded if available
+- **Kahoot ID**: Stored for reference (`imported_from_kahoot: true`)
+
+## Storage Considerations
+
+<Note>
+Imported images count toward your storage quota. Each quiz import checks if you've exceeded the `free_storage_limit` before processing.
+</Note>
+
+The import process:
+1. Downloads images from Kahoot's CDN
+2. Uploads them to your ClassQuiz storage
+3. Calculates file hashes asynchronously
+4. Associates images with the new quiz
+
+## Color Assignments
+
+Kahoot answer colors are not preserved. ClassQuiz assigns default colors in order:
+- Answer 1: `#D6EDC9` (light green)
+- Answer 2: `#B07156` (brown)
+- Answer 3: `#7F7057` (dark tan)
+- Answer 4: `#4E6E58` (dark green)
+
+## Limitations
+
+<Warning>
+Only **ABCD-type questions** are fully supported. Other Kahoot question types may not import correctly.
+</Warning>
+
+- **Kahoot polls/surveys**: Not supported
+- **Kahoot puzzles**: Not supported  
+- **Video questions**: Videos are not imported, only text and images
+- **Special formatting**: Some HTML formatting may be stripped during sanitization
+
+## Error Handling
+
+The import may fail with these HTTP status codes:
+
+| Status Code | Meaning |
+|-------------|--------|
+| `400` | Invalid quiz ID format |
+| `404` | Quiz not found on Kahoot |
+| `409` | Storage limit exceeded |
+| `500` | Kahoot API error |
+
+## After Import
+
+<Tip>
+Imported quizzes are set to **private** (`public: false`) by default. You must explicitly make them public if you want them discoverable.
+</Tip>
+
+The quiz will have:
+- `imported_from_kahoot: true` flag in the database
+- Original `kahoot_id` stored for reference
+- No moderation rating (`mod_rating: null`)
+- Indexed in Meilisearch for search functionality
+
+## API Reference
+
+**Endpoint**: `POST /api/v1/quiz/import/{quiz_id}`
+
+**Authentication**: Required (Bearer token)
+
+**Path Parameters**:
+- `quiz_id` (string): The UUID of the Kahoot quiz
+
+**Response**: Returns the created `Quiz` object with all questions and metadata.
+
+**Example Response**:
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "title": "Imported Quiz Title",
+  "description": "Quiz description",
+  "public": false,
+  "imported_from_kahoot": true,
+  "kahoot_id": "550e8400-e29b-41d4-a716-446655440000",
+  "questions": [...],
+  "created_at": "2023-10-15T12:00:00Z"
+}
+```
+
+## Implementation Details
+
+The import process is handled by `/classquiz/kahoot_importer/import_quiz.py:49-117`:
+
+1. Fetches quiz data from `https://create.kahoot.it/rest/kahoots/{quiz_id}/card/?includeKahoot=true`
+2. Downloads images asynchronously using `aiohttp`
+3. Creates `StorageItem` entries for each image
+4. Sanitizes all text content with `bleach`
+5. Creates the quiz with `imported_from_kahoot: true`
+6. Associates all images with the quiz via many-to-many relationship
+
+## Searching for Quizzes
+
+Before importing, you can search Kahoot's public quiz library:
+
+```python
+from classquiz.kahoot_importer.search import search
+
+# Search for quizzes
+results = await search(
+    query="python programming",
+    limit=9,
+    cursor=1
+)
+
+for entity in results.entities:
+    print(f"Quiz: {entity.card.title}")
+    print(f"ID: {entity.card.uuid}")
+```
+
+The search function queries `https://create.kahoot.it/rest/kahoots/` with your search parameters.
